@@ -32,7 +32,11 @@ Expected backend environment variables:
 DB_URL=jdbc:postgresql://localhost:5432/cryptocinema
 DB_USERNAME=cryptocinema
 DB_PASSWORD=<your-local-password>
-JPA_DDL_AUTO=validate
+JPA_DDL_AUTO=update
+JWT_SECRET=<at-least-32-characters>
+JWT_EXPIRATION=3600000
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=<your-local-admin-password>
 ```
 
 Do not commit real passwords or local `.env` files.
@@ -58,6 +62,48 @@ Expected response:
 {"status":"UP"}
 ```
 
+## Authentication
+
+Public endpoints:
+
+```text
+POST /api/auth/register
+POST /api/auth/login
+GET  /api/health
+```
+
+Protected test endpoints:
+
+```text
+GET /api/user/test   USER or ADMIN
+GET /api/admin/test  ADMIN only
+```
+
+Register:
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register ^
+  -H "Content-Type: application/json" ^
+  -d "{\"firstName\":\"Petar\",\"lastName\":\"Petrovic\",\"email\":\"petar@example.com\",\"password\":\"password123\"}"
+```
+
+Login:
+
+```bash
+curl -X POST http://localhost:8080/api/auth/login ^
+  -H "Content-Type: application/json" ^
+  -d "{\"email\":\"petar@example.com\",\"password\":\"password123\"}"
+```
+
+Use the returned token for protected endpoints:
+
+```bash
+curl http://localhost:8080/api/user/test -H "Authorization: Bearer <token>"
+curl http://localhost:8080/api/admin/test -H "Authorization: Bearer <token>"
+```
+
+Development admin seeding is enabled only when both `ADMIN_EMAIL` and `ADMIN_PASSWORD` are set. The seed is idempotent: if that email already exists, no new admin is created.
+
 ## Frontend
 
 ```bash
@@ -67,6 +113,13 @@ npm run dev
 ```
 
 The frontend runs on `http://localhost:5173`. During local development, Vite proxies `/api` requests to the backend at `http://localhost:8080`.
+
+Open these local routes to test auth manually:
+
+```text
+http://localhost:5173/register
+http://localhost:5173/login
+```
 
 ## Build
 
