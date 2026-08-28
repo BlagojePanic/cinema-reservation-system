@@ -55,6 +55,20 @@ export type MovieResponse = {
   trailerUrl: string | null;
 };
 
+export type ScreeningResponse = {
+  id: number;
+  movieId: number;
+  movieTitle: string;
+  hallId: number;
+  hallName: string;
+  cinemaId: number;
+  cinemaName: string;
+  cityId: number;
+  cityName: string;
+  startTime: string;
+  ticketPrice: number;
+};
+
 export type ApiError = {
   message: string;
   status?: number;
