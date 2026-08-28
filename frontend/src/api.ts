@@ -16,6 +16,32 @@ export type AuthResponse = {
   user: UserResponse;
 };
 
+export type CityResponse = {
+  id: number;
+  name: string;
+};
+
+export type CinemaResponse = {
+  id: number;
+  name: string;
+  address: string;
+  city: CityResponse;
+};
+
+export type HallResponse = {
+  id: number;
+  name: string;
+  cinemaId: number;
+  cinemaName: string;
+};
+
+export type SeatResponse = {
+  id: number;
+  rowLabel: string;
+  seatNumber: number;
+  hallId: number;
+};
+
 export type ApiError = {
   message: string;
   status?: number;

@@ -22,7 +22,7 @@ body {
   background: #ffffff;
   border: 1px solid #d8dee9;
   border-radius: 8px;
-  max-width: 520px;
+  max-width: 920px;
   padding: 32px;
   width: 100%;
 }
@@ -89,11 +89,52 @@ label {
   gap: 6px;
 }
 
-input {
+input,
+select {
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font: inherit;
   padding: 10px 12px;
+}
+
+h2 {
+  font-size: 1.25rem;
+  margin: 0 0 16px;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.data-section {
+  border-top: 1px solid #e5e7eb;
+  margin-top: 28px;
+  padding-top: 24px;
+}
+
+.admin-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.seat-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.seat-grid span {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 4px;
+  color: #312e81;
+  font-weight: 700;
+  min-width: 40px;
+  padding: 6px 8px;
+  text-align: center;
 }
 
 .status-message,
