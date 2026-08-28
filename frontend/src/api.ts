@@ -42,6 +42,19 @@ export type SeatResponse = {
   hallId: number;
 };
 
+export type MovieResponse = {
+  id: number;
+  title: string;
+  description: string;
+  genre: string;
+  durationMinutes: number;
+  ageRating: string | null;
+  director: string | null;
+  releaseDate: string | null;
+  posterUrl: string | null;
+  trailerUrl: string | null;
+};
+
 export type ApiError = {
   message: string;
   status?: number;
@@ -87,5 +100,14 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     throw { message, status: response.status } satisfies ApiError;
   }
 
-  return (await response.json()) as T;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
 }

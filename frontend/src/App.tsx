@@ -7,6 +7,7 @@ import {
   clearToken,
   getToken,
   HallResponse,
+  MovieResponse,
   saveToken,
   SeatResponse,
   UserResponse,
@@ -21,6 +22,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState<UserResponse | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [structureRefreshKey, setStructureRefreshKey] = useState(0);
+  const [movieRefreshKey, setMovieRefreshKey] = useState(0);
 
   useEffect(() => {
     fetch('/api/health')
@@ -76,6 +78,10 @@ function App() {
     setStructureRefreshKey((value) => value + 1);
   }
 
+  function refreshMovieData() {
+    setMovieRefreshKey((value) => value + 1);
+  }
+
   return (
     <main className="app-shell">
       <section className="status-panel">
@@ -113,6 +119,16 @@ function App() {
               </p>
             )}
             {getToken() && !currentUser && <p className="session">JWT is saved in localStorage.</p>}
+            <MovieBrowser refreshKey={movieRefreshKey} />
+            {currentUser?.role === 'ADMIN' && (
+              <AdminMoviePanel
+                refreshKey={movieRefreshKey}
+                onChanged={() => {
+                  refreshMovieData();
+                  setStatusMessage('Movie catalog updated.');
+                }}
+              />
+            )}
             <CatalogBrowser refreshKey={structureRefreshKey} />
             {currentUser?.role === 'ADMIN' && (
               <AdminStructurePanel
@@ -245,6 +261,246 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: (auth: AuthResponse) => void })
       </form>
       {error && <p className="error-message">{error}</p>}
     </>
+  );
+}
+
+function MovieBrowser({ refreshKey }: { refreshKey: number }) {
+  const [movies, setMovies] = useState<MovieResponse[]>([]);
+  const [selectedMovie, setSelectedMovie] = useState<MovieResponse | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiRequest<MovieResponse[]>('/api/movies')
+      .then((response) => {
+        setMovies(response);
+        setSelectedMovie((current) =>
+          current ? response.find((movie) => movie.id === current.id) ?? null : null,
+        );
+        setError('');
+      })
+      .catch((err) => setError(getErrorMessage(err)));
+  }, [refreshKey]);
+
+  async function openDetails(movieId: number) {
+    try {
+      const movie = await apiRequest<MovieResponse>(`/api/movies/${movieId}`);
+      setSelectedMovie(movie);
+      setError('');
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  return (
+    <section className="data-section">
+      <h2>Movies</h2>
+      {movies.length === 0 ? (
+        <p>No movies added yet.</p>
+      ) : (
+        <div className="movie-grid">
+          {movies.map((movie) => (
+            <button
+              className="movie-card"
+              key={movie.id}
+              type="button"
+              onClick={() => openDetails(movie.id)}
+            >
+              {movie.posterUrl ? (
+                <img src={movie.posterUrl} alt={`${movie.title} poster`} />
+              ) : (
+                <span className="poster-placeholder">{movie.title.charAt(0).toUpperCase()}</span>
+              )}
+              <strong>{movie.title}</strong>
+              <span>{movie.genre}</span>
+              <span>{movie.durationMinutes} min{movie.ageRating ? ` - ${movie.ageRating}` : ''}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selectedMovie && (
+        <article className="movie-detail">
+          {selectedMovie.posterUrl && (
+            <img src={selectedMovie.posterUrl} alt={`${selectedMovie.title} poster`} />
+          )}
+          <div>
+            <h3>{selectedMovie.title}</h3>
+            <p>{selectedMovie.description}</p>
+            <dl>
+              <div>
+                <dt>Genre</dt>
+                <dd>{selectedMovie.genre}</dd>
+              </div>
+              <div>
+                <dt>Duration</dt>
+                <dd>{selectedMovie.durationMinutes} min</dd>
+              </div>
+              {selectedMovie.ageRating && (
+                <div>
+                  <dt>Age rating</dt>
+                  <dd>{selectedMovie.ageRating}</dd>
+                </div>
+              )}
+              {selectedMovie.director && (
+                <div>
+                  <dt>Director</dt>
+                  <dd>{selectedMovie.director}</dd>
+                </div>
+              )}
+              {selectedMovie.releaseDate && (
+                <div>
+                  <dt>Release date</dt>
+                  <dd>{selectedMovie.releaseDate}</dd>
+                </div>
+              )}
+            </dl>
+            {selectedMovie.trailerUrl && (
+              <a href={selectedMovie.trailerUrl} target="_blank" rel="noreferrer">
+                Trailer
+              </a>
+            )}
+          </div>
+        </article>
+      )}
+
+      {error && <p className="error-message">{error}</p>}
+    </section>
+  );
+}
+
+function AdminMoviePanel({
+  refreshKey,
+  onChanged,
+}: {
+  refreshKey: number;
+  onChanged: () => void;
+}) {
+  const [movies, setMovies] = useState<MovieResponse[]>([]);
+  const [editingMovieId, setEditingMovieId] = useState('');
+  const [error, setError] = useState('');
+
+  const editingMovie = movies.find((movie) => movie.id === Number(editingMovieId));
+
+  useEffect(() => {
+    refreshMovies();
+  }, [refreshKey]);
+
+  async function refreshMovies() {
+    try {
+      const response = await apiRequest<MovieResponse[]>('/api/movies');
+      setMovies(response);
+      setError('');
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function submitMovie(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const movieId = String(form.get('movieId') ?? '');
+    const path = movieId ? `/api/admin/movies/${movieId}` : '/api/admin/movies';
+    const method = movieId ? 'PUT' : 'POST';
+
+    try {
+      await apiRequest(path, {
+        method,
+        body: JSON.stringify(movieBodyFromForm(form)),
+      });
+      formElement.reset();
+      setEditingMovieId('');
+      await refreshMovies();
+      onChanged();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function deleteMovie(movieId: number) {
+    try {
+      await apiRequest(`/api/admin/movies/${movieId}`, {
+        method: 'DELETE',
+      });
+      if (editingMovieId === String(movieId)) {
+        setEditingMovieId('');
+      }
+      await refreshMovies();
+      onChanged();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  return (
+    <section className="data-section">
+      <h2>Admin movie tools</h2>
+      <form className="form-grid" onSubmit={submitMovie} key={editingMovie?.id ?? 'new-movie'}>
+        <input name="movieId" type="hidden" defaultValue={editingMovie?.id ?? ''} />
+        <label>
+          Editing
+          <select value={editingMovieId} onChange={(event) => setEditingMovieId(event.target.value)}>
+            <option value="">New movie</option>
+            {movies.map((movie) => (
+              <option key={movie.id} value={movie.id}>
+                {movie.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Title
+          <input name="title" required defaultValue={editingMovie?.title ?? ''} />
+        </label>
+        <label>
+          Description
+          <textarea name="description" required defaultValue={editingMovie?.description ?? ''} />
+        </label>
+        <label>
+          Genre
+          <input name="genre" required defaultValue={editingMovie?.genre ?? ''} />
+        </label>
+        <label>
+          Duration
+          <input
+            name="durationMinutes"
+            type="number"
+            min="1"
+            required
+            defaultValue={editingMovie?.durationMinutes ?? ''}
+          />
+        </label>
+        <label>
+          Age rating
+          <input name="ageRating" defaultValue={editingMovie?.ageRating ?? ''} />
+        </label>
+        <label>
+          Director
+          <input name="director" defaultValue={editingMovie?.director ?? ''} />
+        </label>
+        <label>
+          Release date
+          <input name="releaseDate" type="date" defaultValue={editingMovie?.releaseDate ?? ''} />
+        </label>
+        <label>
+          Poster URL
+          <input name="posterUrl" type="url" defaultValue={editingMovie?.posterUrl ?? ''} />
+        </label>
+        <label>
+          Trailer URL
+          <input name="trailerUrl" type="url" defaultValue={editingMovie?.trailerUrl ?? ''} />
+        </label>
+        <div className="actions">
+          <button type="submit">{editingMovie ? 'Update movie' : 'Add movie'}</button>
+          {editingMovie && (
+            <button type="button" onClick={() => deleteMovie(editingMovie.id)}>
+              Delete movie
+            </button>
+          )}
+        </div>
+      </form>
+      {error && <p className="error-message">{error}</p>}
+    </section>
   );
 }
 
@@ -555,6 +811,28 @@ function getPageFromPath(): Page {
     return 'login';
   }
   return 'home';
+}
+
+function movieBodyFromForm(form: FormData) {
+  return {
+    title: form.get('title'),
+    description: form.get('description'),
+    genre: form.get('genre'),
+    durationMinutes: Number(form.get('durationMinutes')),
+    ageRating: optionalFormValue(form.get('ageRating')),
+    director: optionalFormValue(form.get('director')),
+    releaseDate: optionalFormValue(form.get('releaseDate')),
+    posterUrl: optionalFormValue(form.get('posterUrl')),
+    trailerUrl: optionalFormValue(form.get('trailerUrl')),
+  };
+}
+
+function optionalFormValue(value: FormDataEntryValue | null) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }
 
 function getErrorMessage(error: unknown) {
