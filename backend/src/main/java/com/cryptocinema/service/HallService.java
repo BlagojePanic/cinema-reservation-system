@@ -13,6 +13,7 @@ import com.cryptocinema.exception.ConflictException;
 import com.cryptocinema.exception.ResourceNotFoundException;
 import com.cryptocinema.repository.CinemaRepository;
 import com.cryptocinema.repository.HallRepository;
+import com.cryptocinema.repository.ScreeningRepository;
 import com.cryptocinema.repository.SeatRepository;
 
 @Service
@@ -21,15 +22,18 @@ public class HallService {
     private final HallRepository hallRepository;
     private final CinemaRepository cinemaRepository;
     private final SeatRepository seatRepository;
+    private final ScreeningRepository screeningRepository;
 
     public HallService(
             HallRepository hallRepository,
             CinemaRepository cinemaRepository,
-            SeatRepository seatRepository
+            SeatRepository seatRepository,
+            ScreeningRepository screeningRepository
     ) {
         this.hallRepository = hallRepository;
         this.cinemaRepository = cinemaRepository;
         this.seatRepository = seatRepository;
+        this.screeningRepository = screeningRepository;
     }
 
     @Transactional(readOnly = true)
@@ -66,6 +70,9 @@ public class HallService {
         Hall hall = getHall(id);
         if (seatRepository.existsByHallId(id)) {
             throw new ConflictException("Hall cannot be deleted while it has seats");
+        }
+        if (screeningRepository.existsByHallId(id)) {
+            throw new ConflictException("Hall cannot be deleted while it has screenings");
         }
         hallRepository.delete(hall);
     }

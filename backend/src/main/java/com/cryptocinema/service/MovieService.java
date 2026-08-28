@@ -8,16 +8,20 @@ import org.springframework.transaction.annotation.Transactional;
 import com.cryptocinema.dto.MovieRequest;
 import com.cryptocinema.dto.MovieResponse;
 import com.cryptocinema.entity.Movie;
+import com.cryptocinema.exception.ConflictException;
 import com.cryptocinema.exception.ResourceNotFoundException;
 import com.cryptocinema.repository.MovieRepository;
+import com.cryptocinema.repository.ScreeningRepository;
 
 @Service
 public class MovieService {
 
     private final MovieRepository movieRepository;
+    private final ScreeningRepository screeningRepository;
 
-    public MovieService(MovieRepository movieRepository) {
+    public MovieService(MovieRepository movieRepository, ScreeningRepository screeningRepository) {
         this.movieRepository = movieRepository;
+        this.screeningRepository = screeningRepository;
     }
 
     @Transactional(readOnly = true)
@@ -49,6 +53,9 @@ public class MovieService {
     @Transactional
     public void delete(Long id) {
         Movie movie = getMovie(id);
+        if (screeningRepository.existsByMovieId(id)) {
+            throw new ConflictException("Movie cannot be deleted while it has screenings");
+        }
         movieRepository.delete(movie);
     }
 

@@ -9,6 +9,7 @@ import {
   HallResponse,
   MovieResponse,
   saveToken,
+  ScreeningResponse,
   SeatResponse,
   UserResponse,
 } from './api';
@@ -23,6 +24,7 @@ function App() {
   const [statusMessage, setStatusMessage] = useState('');
   const [structureRefreshKey, setStructureRefreshKey] = useState(0);
   const [movieRefreshKey, setMovieRefreshKey] = useState(0);
+  const [screeningRefreshKey, setScreeningRefreshKey] = useState(0);
 
   useEffect(() => {
     fetch('/api/health')
@@ -82,6 +84,10 @@ function App() {
     setMovieRefreshKey((value) => value + 1);
   }
 
+  function refreshScreeningData() {
+    setScreeningRefreshKey((value) => value + 1);
+  }
+
   return (
     <main className="app-shell">
       <section className="status-panel">
@@ -119,7 +125,8 @@ function App() {
               </p>
             )}
             {getToken() && !currentUser && <p className="session">JWT is saved in localStorage.</p>}
-            <MovieBrowser refreshKey={movieRefreshKey} />
+            <MovieBrowser refreshKey={movieRefreshKey} screeningRefreshKey={screeningRefreshKey} />
+            <RepertoireBrowser refreshKey={screeningRefreshKey} />
             {currentUser?.role === 'ADMIN' && (
               <AdminMoviePanel
                 refreshKey={movieRefreshKey}
@@ -136,6 +143,15 @@ function App() {
                 onChanged={() => {
                   refreshStructureData();
                   setStatusMessage('Cinema structure updated.');
+                }}
+              />
+            )}
+            {currentUser?.role === 'ADMIN' && (
+              <AdminScreeningPanel
+                refreshKey={screeningRefreshKey}
+                onChanged={() => {
+                  refreshScreeningData();
+                  setStatusMessage('Screening schedule updated.');
                 }}
               />
             )}
@@ -264,9 +280,16 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: (auth: AuthResponse) => void })
   );
 }
 
-function MovieBrowser({ refreshKey }: { refreshKey: number }) {
+function MovieBrowser({
+  refreshKey,
+  screeningRefreshKey,
+}: {
+  refreshKey: number;
+  screeningRefreshKey: number;
+}) {
   const [movies, setMovies] = useState<MovieResponse[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<MovieResponse | null>(null);
+  const [selectedMovieScreenings, setSelectedMovieScreenings] = useState<ScreeningResponse[]>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -281,10 +304,26 @@ function MovieBrowser({ refreshKey }: { refreshKey: number }) {
       .catch((err) => setError(getErrorMessage(err)));
   }, [refreshKey]);
 
+  useEffect(() => {
+    if (!selectedMovie) {
+      setSelectedMovieScreenings([]);
+      return;
+    }
+
+    apiRequest<ScreeningResponse[]>(`/api/movies/${selectedMovie.id}/screenings`)
+      .then((response) => {
+        setSelectedMovieScreenings(response);
+        setError('');
+      })
+      .catch((err) => setError(getErrorMessage(err)));
+  }, [selectedMovie, screeningRefreshKey]);
+
   async function openDetails(movieId: number) {
     try {
       const movie = await apiRequest<MovieResponse>(`/api/movies/${movieId}`);
+      const screenings = await apiRequest<ScreeningResponse[]>(`/api/movies/${movieId}/screenings`);
       setSelectedMovie(movie);
+      setSelectedMovieScreenings(screenings);
       setError('');
     } catch (err) {
       setError(getErrorMessage(err));
@@ -359,9 +398,155 @@ function MovieBrowser({ refreshKey }: { refreshKey: number }) {
                 Trailer
               </a>
             )}
+            <MovieScreeningList screenings={selectedMovieScreenings} />
           </div>
         </article>
       )}
+
+      {error && <p className="error-message">{error}</p>}
+    </section>
+  );
+}
+
+function MovieScreeningList({ screenings }: { screenings: ScreeningResponse[] }) {
+  const groupedScreenings = screenings.reduce<Record<string, ScreeningResponse[]>>((groups, screening) => {
+    const date = screening.startTime.slice(0, 10);
+    groups[date] = [...(groups[date] ?? []), screening];
+    return groups;
+  }, {});
+
+  return (
+    <section className="screening-block">
+      <h4>Screenings</h4>
+      {screenings.length === 0 ? (
+        <p>No screenings available.</p>
+      ) : (
+        <div className="screening-groups">
+          {Object.entries(groupedScreenings).map(([date, dailyScreenings]) => (
+            <div className="screening-day" key={date}>
+              <strong>{formatDate(date)}</strong>
+              {dailyScreenings.map((screening) => (
+                <button className="screening-time" key={screening.id} type="button">
+                  {screening.cinemaName} - {screening.hallName} - {formatTime(screening.startTime)}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RepertoireBrowser({ refreshKey }: { refreshKey: number }) {
+  const [cities, setCities] = useState<CityResponse[]>([]);
+  const [cinemas, setCinemas] = useState<CinemaResponse[]>([]);
+  const [movies, setMovies] = useState<MovieResponse[]>([]);
+  const [screenings, setScreenings] = useState<ScreeningResponse[]>([]);
+  const [selectedCityId, setSelectedCityId] = useState('');
+  const [selectedCinemaId, setSelectedCinemaId] = useState('');
+  const [selectedMovieId, setSelectedMovieId] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [error, setError] = useState('');
+
+  const availableCinemas = selectedCityId
+    ? cinemas.filter((cinema) => cinema.city.id === Number(selectedCityId))
+    : cinemas;
+
+  useEffect(() => {
+    Promise.all([
+      apiRequest<CityResponse[]>('/api/cities'),
+      apiRequest<CinemaResponse[]>('/api/cinemas'),
+      apiRequest<MovieResponse[]>('/api/movies'),
+    ])
+      .then(([nextCities, nextCinemas, nextMovies]) => {
+        setCities(nextCities);
+        setCinemas(nextCinemas);
+        setMovies(nextMovies);
+        setError('');
+      })
+      .catch((err) => setError(getErrorMessage(err)));
+  }, [refreshKey]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (selectedCityId) params.set('cityId', selectedCityId);
+    if (selectedCinemaId) params.set('cinemaId', selectedCinemaId);
+    if (selectedMovieId) params.set('movieId', selectedMovieId);
+    if (selectedDate) params.set('date', selectedDate);
+
+    const query = params.toString();
+    apiRequest<ScreeningResponse[]>(`/api/screenings${query ? `?${query}` : ''}`)
+      .then((response) => {
+        setScreenings(response);
+        setError('');
+      })
+      .catch((err) => setError(getErrorMessage(err)));
+  }, [refreshKey, selectedCityId, selectedCinemaId, selectedMovieId, selectedDate]);
+
+  useEffect(() => {
+    if (selectedCinemaId && !availableCinemas.some((cinema) => cinema.id === Number(selectedCinemaId))) {
+      setSelectedCinemaId('');
+    }
+  }, [availableCinemas, selectedCinemaId]);
+
+  return (
+    <section className="data-section">
+      <h2>Repertoire</h2>
+      <div className="form-grid filters-grid">
+        <label>
+          City
+          <select value={selectedCityId} onChange={(event) => setSelectedCityId(event.target.value)}>
+            <option value="">All cities</option>
+            {cities.map((city) => (
+              <option key={city.id} value={city.id}>
+                {city.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Cinema
+          <select value={selectedCinemaId} onChange={(event) => setSelectedCinemaId(event.target.value)}>
+            <option value="">All cinemas</option>
+            {availableCinemas.map((cinema) => (
+              <option key={cinema.id} value={cinema.id}>
+                {cinema.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Date
+          <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+        </label>
+        <label>
+          Movie
+          <select value={selectedMovieId} onChange={(event) => setSelectedMovieId(event.target.value)}>
+            <option value="">All movies</option>
+            {movies.map((movie) => (
+              <option key={movie.id} value={movie.id}>
+                {movie.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="screening-list">
+        {screenings.length === 0 ? (
+          <p>No screenings available.</p>
+        ) : (
+          screenings.map((screening) => (
+            <article className="screening-card" key={screening.id}>
+              <strong>{screening.movieTitle}</strong>
+              <span>{formatDate(screening.startTime)} at {formatTime(screening.startTime)}</span>
+              <span>{screening.cityName} - {screening.cinemaName} - {screening.hallName}</span>
+              <span>{screening.ticketPrice} RSD</span>
+            </article>
+          ))
+        )}
+      </div>
 
       {error && <p className="error-message">{error}</p>}
     </section>
@@ -495,6 +680,219 @@ function AdminMoviePanel({
           {editingMovie && (
             <button type="button" onClick={() => deleteMovie(editingMovie.id)}>
               Delete movie
+            </button>
+          )}
+        </div>
+      </form>
+      {error && <p className="error-message">{error}</p>}
+    </section>
+  );
+}
+
+function AdminScreeningPanel({
+  refreshKey,
+  onChanged,
+}: {
+  refreshKey: number;
+  onChanged: () => void;
+}) {
+  const [movies, setMovies] = useState<MovieResponse[]>([]);
+  const [cities, setCities] = useState<CityResponse[]>([]);
+  const [cinemas, setCinemas] = useState<CinemaResponse[]>([]);
+  const [halls, setHalls] = useState<HallResponse[]>([]);
+  const [screenings, setScreenings] = useState<ScreeningResponse[]>([]);
+  const [editingScreeningId, setEditingScreeningId] = useState('');
+  const [selectedCityId, setSelectedCityId] = useState('');
+  const [selectedCinemaId, setSelectedCinemaId] = useState('');
+  const [error, setError] = useState('');
+
+  const editingScreening = screenings.find((screening) => screening.id === Number(editingScreeningId));
+  const availableCinemas = selectedCityId
+    ? cinemas.filter((cinema) => cinema.city.id === Number(selectedCityId))
+    : cinemas;
+  const availableHalls = selectedCinemaId
+    ? halls.filter((hall) => hall.cinemaId === Number(selectedCinemaId))
+    : halls;
+
+  useEffect(() => {
+    refreshAdminScreeningData();
+  }, [refreshKey]);
+
+  useEffect(() => {
+    if (!editingScreening) {
+      return;
+    }
+    setSelectedCityId(String(editingScreening.cityId));
+    setSelectedCinemaId(String(editingScreening.cinemaId));
+  }, [editingScreening]);
+
+  async function refreshAdminScreeningData() {
+    try {
+      const [nextMovies, nextCities, nextCinemas, nextScreenings] = await Promise.all([
+        apiRequest<MovieResponse[]>('/api/movies'),
+        apiRequest<CityResponse[]>('/api/cities'),
+        apiRequest<CinemaResponse[]>('/api/cinemas'),
+        apiRequest<ScreeningResponse[]>('/api/screenings'),
+      ]);
+      const hallGroups = await Promise.all(
+        nextCinemas.map((cinema) => apiRequest<HallResponse[]>(`/api/cinemas/${cinema.id}/halls`)),
+      );
+      setMovies(nextMovies);
+      setCities(nextCities);
+      setCinemas(nextCinemas);
+      setHalls(hallGroups.flat());
+      setScreenings(nextScreenings);
+      setError('');
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function submitScreening(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const screeningId = String(form.get('screeningId') ?? '');
+    const path = screeningId ? `/api/admin/screenings/${screeningId}` : '/api/admin/screenings';
+    const method = screeningId ? 'PUT' : 'POST';
+
+    try {
+      await apiRequest(path, {
+        method,
+        body: JSON.stringify(screeningBodyFromForm(form)),
+      });
+      formElement.reset();
+      setEditingScreeningId('');
+      setSelectedCityId('');
+      setSelectedCinemaId('');
+      await refreshAdminScreeningData();
+      onChanged();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function deleteScreening(screeningId: number) {
+    try {
+      await apiRequest(`/api/admin/screenings/${screeningId}`, {
+        method: 'DELETE',
+      });
+      if (editingScreeningId === String(screeningId)) {
+        setEditingScreeningId('');
+      }
+      await refreshAdminScreeningData();
+      onChanged();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  function changeEditingScreening(screeningId: string) {
+    setEditingScreeningId(screeningId);
+    if (!screeningId) {
+      setSelectedCityId('');
+      setSelectedCinemaId('');
+    }
+  }
+
+  return (
+    <section className="data-section">
+      <h2>Admin screening tools</h2>
+      <form
+        className="form-grid"
+        onSubmit={submitScreening}
+        key={editingScreening?.id ?? 'new-screening'}
+      >
+        <input name="screeningId" type="hidden" defaultValue={editingScreening?.id ?? ''} />
+        <label>
+          Editing
+          <select value={editingScreeningId} onChange={(event) => changeEditingScreening(event.target.value)}>
+            <option value="">New screening</option>
+            {screenings.map((screening) => (
+              <option key={screening.id} value={screening.id}>
+                {screening.movieTitle} - {formatDate(screening.startTime)} {formatTime(screening.startTime)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Movie
+          <select name="movieId" required defaultValue={editingScreening?.movieId ?? ''}>
+            <option value="">Select movie</option>
+            {movies.map((movie) => (
+              <option key={movie.id} value={movie.id}>
+                {movie.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          City
+          <select value={selectedCityId} onChange={(event) => setSelectedCityId(event.target.value)}>
+            <option value="">Select city</option>
+            {cities.map((city) => (
+              <option key={city.id} value={city.id}>
+                {city.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Cinema
+          <select value={selectedCinemaId} onChange={(event) => setSelectedCinemaId(event.target.value)}>
+            <option value="">Select cinema</option>
+            {availableCinemas.map((cinema) => (
+              <option key={cinema.id} value={cinema.id}>
+                {cinema.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Hall
+          <select name="hallId" required defaultValue={editingScreening?.hallId ?? ''}>
+            <option value="">Select hall</option>
+            {availableHalls.map((hall) => (
+              <option key={hall.id} value={hall.id}>
+                {hall.cinemaName} - {hall.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Date
+          <input
+            name="date"
+            type="date"
+            required
+            defaultValue={editingScreening?.startTime.slice(0, 10) ?? ''}
+          />
+        </label>
+        <label>
+          Time
+          <input
+            name="time"
+            type="time"
+            required
+            defaultValue={editingScreening?.startTime.slice(11, 16) ?? ''}
+          />
+        </label>
+        <label>
+          Ticket price
+          <input
+            name="ticketPrice"
+            type="number"
+            min="1"
+            step="0.01"
+            required
+            defaultValue={editingScreening?.ticketPrice ?? ''}
+          />
+        </label>
+        <div className="actions">
+          <button type="submit">{editingScreening ? 'Update screening' : 'Add screening'}</button>
+          {editingScreening && (
+            <button type="button" onClick={() => deleteScreening(editingScreening.id)}>
+              Delete screening
             </button>
           )}
         </div>
@@ -827,12 +1225,36 @@ function movieBodyFromForm(form: FormData) {
   };
 }
 
+function screeningBodyFromForm(form: FormData) {
+  return {
+    movieId: Number(form.get('movieId')),
+    hallId: Number(form.get('hallId')),
+    startTime: `${form.get('date')}T${form.get('time')}:00`,
+    ticketPrice: Number(form.get('ticketPrice')),
+  };
+}
+
 function optionalFormValue(value: FormDataEntryValue | null) {
   if (typeof value !== 'string') {
     return null;
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat('sr-RS', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(value));
+}
+
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat('sr-RS', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
 }
 
 function getErrorMessage(error: unknown) {
