@@ -173,6 +173,25 @@ class AuthSecurityIntegrationTest {
                 .andExpect(jsonPath("$.message").value("ADMIN endpoint accessible"));
     }
 
+    @Test
+    void meReturnsCurrentUserForValidJwt() throws Exception {
+        createUser("admin@example.com", "password123", Role.ADMIN);
+        String token = loginAndGetToken("admin@example.com", "password123");
+
+        mockMvc.perform(get("/api/auth/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("admin@example.com"))
+                .andExpect(jsonPath("$.role").value("ADMIN"))
+                .andExpect(jsonPath("$.password").doesNotExist());
+    }
+
+    @Test
+    void meRejectsGuest() throws Exception {
+        mockMvc.perform(get("/api/auth/me"))
+                .andExpect(status().isUnauthorized());
+    }
+
     private void registerUser(String email, String password) throws Exception {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)

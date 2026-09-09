@@ -26,6 +26,7 @@ import com.cryptocinema.repository.CinemaRepository;
 import com.cryptocinema.repository.CityRepository;
 import com.cryptocinema.repository.HallRepository;
 import com.cryptocinema.repository.MovieRepository;
+import com.cryptocinema.repository.ScreeningSeatRepository;
 import com.cryptocinema.repository.ScreeningRepository;
 import com.cryptocinema.repository.SeatRepository;
 import com.cryptocinema.repository.UserRepository;
@@ -55,6 +56,9 @@ class ScreeningIntegrationTest {
     private ScreeningRepository screeningRepository;
 
     @Autowired
+    private ScreeningSeatRepository screeningSeatRepository;
+
+    @Autowired
     private SeatRepository seatRepository;
 
     @Autowired
@@ -74,6 +78,7 @@ class ScreeningIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        screeningSeatRepository.deleteAll();
         screeningRepository.deleteAll();
         seatRepository.deleteAll();
         hallRepository.deleteAll();
@@ -187,6 +192,7 @@ class ScreeningIntegrationTest {
     void differentHallsCanHaveScreeningsAtSameTime() throws Exception {
         TestData data = createTestData();
         Long secondHallId = createHall(data.cinemaId(), "Sala 2");
+        generateSeats(secondHallId, 2, 3);
         createScreening(data.movieId(), data.hallId(), futureStart(20, 30));
 
         mockMvc.perform(post("/api/admin/screenings")
@@ -293,6 +299,7 @@ class ScreeningIntegrationTest {
         Long cinemaId = createCinema(cityId);
         Long hallId = createHall(cinemaId, "Sala 1");
         Long movieId = createMovie("Interstellar", 169);
+        generateSeats(hallId, 2, 3);
         return new TestData(cityId, cinemaId, hallId, movieId);
     }
 
@@ -365,6 +372,19 @@ class ScreeningIntegrationTest {
                 .andReturn();
 
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+    }
+
+    private void generateSeats(Long hallId, int rows, int seatsPerRow) throws Exception {
+        mockMvc.perform(post("/api/admin/halls/{hallId}/seats/generate", hallId)
+                        .with(user("admin@example.com").roles("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "rows": %d,
+                                  "seatsPerRow": %d
+                                }
+                                """.formatted(rows, seatsPerRow)))
+                .andExpect(status().isCreated());
     }
 
     private Long createScreening(Long movieId, Long hallId, LocalDateTime startTime) throws Exception {

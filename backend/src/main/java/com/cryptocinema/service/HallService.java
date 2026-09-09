@@ -68,11 +68,11 @@ public class HallService {
     @Transactional
     public void delete(Long id) {
         Hall hall = getHall(id);
-        if (seatRepository.existsByHallId(id)) {
-            throw new ConflictException("Hall cannot be deleted while it has seats");
-        }
         if (screeningRepository.existsByHallId(id)) {
             throw new ConflictException("Hall cannot be deleted while it has screenings");
+        }
+        if (seatRepository.existsByHallId(id)) {
+            throw new ConflictException("Hall cannot be deleted while it has seats");
         }
         hallRepository.delete(hall);
     }

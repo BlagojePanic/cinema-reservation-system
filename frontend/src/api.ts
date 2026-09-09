@@ -69,6 +69,18 @@ export type ScreeningResponse = {
   ticketPrice: number;
 };
 
+export type ScreeningSeatStatus = 'AVAILABLE' | 'HELD' | 'RESERVED';
+
+export type ScreeningSeatResponse = {
+  screeningSeatId: number;
+  seatId: number;
+  rowLabel: string;
+  seatNumber: number;
+  status: ScreeningSeatStatus;
+  heldByCurrentUser: boolean;
+  holdExpiresAt: string | null;
+};
+
 export type ApiError = {
   message: string;
   status?: number;
