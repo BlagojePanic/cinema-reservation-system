@@ -97,6 +97,13 @@ export type PaymentResponse = {
   reference: string;
   createdAt: string;
   completedAt: string | null;
+  cryptoCurrency: string | null;
+  cryptoAmount: number | null;
+  exchangeRate: number | null;
+  network: string | null;
+  chainId: number | null;
+  walletAddress: string | null;
+  transactionHash: string | null;
 };
 
 export type ReservationResponse = {
@@ -113,6 +120,38 @@ export type ReservationResponse = {
   createdAt: string;
   expiresAt: string;
   payment: PaymentResponse | null;
+};
+
+export type CryptoPaymentPrepareResponse = {
+  reservationId: number;
+  paymentId: number;
+  merchantAddress: string;
+  network: string;
+  chainId: number;
+  cryptoCurrency: string;
+  cryptoAmount: number;
+  amountRsd: number;
+  expiresAt: string;
+};
+
+export type AdminReservationResponse = {
+  reservationId: number;
+  userId: number;
+  userEmail: string;
+  movieTitle: string;
+  screeningId: number;
+  startTime: string;
+  cinemaName: string;
+  hallName: string;
+  seats: string[];
+  totalAmount: number;
+  reservationStatus: ReservationStatus;
+  createdAt: string;
+  expiresAt: string;
+  latestPaymentStatus: PaymentStatus | null;
+  latestPaymentMethod: PaymentMethod | null;
+  latestPaymentReference: string | null;
+  latestPaymentTransactionHash: string | null;
 };
 
 export type ApiError = {

@@ -1,10 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react';
 import {
   apiRequest,
+  AdminReservationResponse,
   AuthResponse,
   CinemaResponse,
   CityResponse,
   clearToken,
+  CryptoPaymentPrepareResponse,
   getToken,
   HallResponse,
   MovieResponse,
@@ -19,6 +21,25 @@ import {
 
 type HealthState = 'checking' | 'up' | 'down';
 type Page = 'home' | 'register' | 'login';
+type CryptoUiStatus = 'READY' | 'WALLET_CONNECTED' | 'TRANSACTION_SENT' | 'WAITING_CONFIRMATION' | 'SUCCESS' | 'FAILED';
+
+type CryptoUiState = {
+  status: CryptoUiStatus;
+  message: string;
+  walletAddress?: string;
+  transactionHash?: string;
+  prepare?: CryptoPaymentPrepareResponse;
+};
+
+type EthereumProvider = {
+  request<T = unknown>(args: { method: string; params?: unknown[] }): Promise<T>;
+};
+
+declare global {
+  interface Window {
+    ethereum?: EthereumProvider;
+  }
+}
 
 function App() {
   const [health, setHealth] = useState<HealthState>('checking');
@@ -166,6 +187,9 @@ function App() {
             />
             {currentUser && (
               <MyReservations refreshKey={reservationRefreshKey} onChanged={refreshAllData} />
+            )}
+            {currentUser?.role === 'ADMIN' && (
+              <AdminReservationPanel refreshKey={reservationRefreshKey} />
             )}
             {currentUser?.role === 'ADMIN' && (
               <AdminMoviePanel
@@ -792,6 +816,7 @@ function MyReservations({
   const [reservations, setReservations] = useState<ReservationResponse[]>([]);
   const [paymentsByReservation, setPaymentsByReservation] = useState<Record<number, PaymentResponse[]>>({});
   const [payingReservationId, setPayingReservationId] = useState<number | null>(null);
+  const [cryptoStates, setCryptoStates] = useState<Record<number, CryptoUiState>>({});
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -858,6 +883,169 @@ function MyReservations({
     }
   }
 
+  async function payWithMetaMask(reservationId: number) {
+    setPayingReservationId(reservationId);
+    setError('');
+    setMessage('');
+    updateCryptoState(reservationId, { status: 'READY', message: 'Preparing MetaMask payment.' });
+
+    try {
+      const ethereum = window.ethereum;
+      if (!ethereum) {
+        updateCryptoState(reservationId, { status: 'FAILED', message: 'MetaMask is not installed.' });
+        return;
+      }
+
+      const accounts = await ethereum.request<string[]>({ method: 'eth_requestAccounts' });
+      const walletAddress = accounts[0];
+      updateCryptoState(reservationId, {
+        status: 'WALLET_CONNECTED',
+        message: 'Wallet connected.',
+        walletAddress,
+      });
+
+      const chainId = await ethereum.request<string>({ method: 'eth_chainId' });
+      if (chainId.toLowerCase() !== '0xaa36a7') {
+        await ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: '0xaa36a7' }],
+        });
+      }
+
+      const prepare = await apiRequest<CryptoPaymentPrepareResponse>(
+        `/api/reservations/${reservationId}/crypto-payment/prepare`,
+        { method: 'POST' },
+      );
+      updateCryptoState(reservationId, {
+        status: 'WALLET_CONNECTED',
+        message: `Ready to send ${prepare.cryptoAmount} ${prepare.cryptoCurrency}.`,
+        walletAddress,
+        prepare,
+      });
+
+      const transactionHash = await ethereum.request<string>({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: walletAddress,
+          to: prepare.merchantAddress,
+          value: decimalEthToWeiHex(prepare.cryptoAmount),
+        }],
+      });
+      updateCryptoState(reservationId, {
+        status: 'TRANSACTION_SENT',
+        message: 'Transaction sent. Waiting for backend verification.',
+        walletAddress,
+        transactionHash,
+        prepare,
+      });
+
+      updateCryptoState(reservationId, {
+        status: 'WAITING_CONFIRMATION',
+        message: 'Waiting confirmation.',
+        walletAddress,
+        transactionHash,
+        prepare,
+      });
+      const payment = await apiRequest<PaymentResponse>(
+        `/api/reservations/${reservationId}/crypto-payment/confirm`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            paymentId: prepare.paymentId,
+            transactionHash,
+            walletAddress,
+          }),
+        },
+      );
+
+      if (payment.status === 'SUCCESS') {
+        updateCryptoState(reservationId, {
+          status: 'SUCCESS',
+          message: 'Payment successful',
+          walletAddress,
+          transactionHash,
+          prepare,
+        });
+        setMessage('Payment successful');
+      } else {
+        updateCryptoState(reservationId, {
+          status: 'WAITING_CONFIRMATION',
+          message: 'Transaction is still pending. Try verification again in a few seconds.',
+          walletAddress,
+          transactionHash,
+          prepare,
+        });
+      }
+      await loadReservations();
+      onChanged();
+    } catch (err) {
+      updateCryptoState(reservationId, {
+        status: 'FAILED',
+        message: getErrorMessage(err),
+      });
+      setError(getErrorMessage(err));
+      await loadReservations();
+    } finally {
+      setPayingReservationId(null);
+    }
+  }
+
+  async function verifyCryptoTransaction(reservationId: number) {
+    const cryptoState = cryptoStates[reservationId];
+    if (!cryptoState?.prepare || !cryptoState.transactionHash || !cryptoState.walletAddress) {
+      setError('No pending crypto transaction is available for verification.');
+      return;
+    }
+
+    setPayingReservationId(reservationId);
+    setError('');
+    updateCryptoState(reservationId, {
+      ...cryptoState,
+      status: 'WAITING_CONFIRMATION',
+      message: 'Waiting confirmation.',
+    });
+
+    try {
+      const payment = await apiRequest<PaymentResponse>(
+        `/api/reservations/${reservationId}/crypto-payment/confirm`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            paymentId: cryptoState.prepare.paymentId,
+            transactionHash: cryptoState.transactionHash,
+            walletAddress: cryptoState.walletAddress,
+          }),
+        },
+      );
+      updateCryptoState(reservationId, {
+        ...cryptoState,
+        status: payment.status === 'SUCCESS' ? 'SUCCESS' : 'WAITING_CONFIRMATION',
+        message: payment.status === 'SUCCESS'
+          ? 'Payment successful'
+          : 'Transaction is still pending. Try verification again in a few seconds.',
+      });
+      await loadReservations();
+      onChanged();
+    } catch (err) {
+      updateCryptoState(reservationId, {
+        ...cryptoState,
+        status: 'FAILED',
+        message: getErrorMessage(err),
+      });
+      setError(getErrorMessage(err));
+      await loadReservations();
+    } finally {
+      setPayingReservationId(null);
+    }
+  }
+
+  function updateCryptoState(reservationId: number, state: CryptoUiState) {
+    setCryptoStates((current) => ({
+      ...current,
+      [reservationId]: state,
+    }));
+  }
+
   return (
     <section className="data-section">
       <h2>My Reservations</h2>
@@ -868,6 +1056,7 @@ function MyReservations({
           reservations.map((reservation) => {
             const payments = paymentsByReservation[reservation.reservationId] ?? [];
             const latestPayment = reservation.payment ?? payments[0] ?? null;
+            const cryptoState = cryptoStates[reservation.reservationId];
 
             return (
               <article className="reservation-card" key={reservation.reservationId}>
@@ -886,6 +1075,7 @@ function MyReservations({
                 )}
                 {reservation.status === 'PENDING_PAYMENT' && (
                   <div className="payment-panel">
+                    <strong>Payment options</strong>
                     <strong>Simulated card payment</strong>
                     <div className="actions">
                       <button
@@ -910,6 +1100,49 @@ function MyReservations({
                         Cancel reservation
                       </button>
                     </div>
+                    <strong>MetaMask / ETH testnet</strong>
+                    <button
+                      type="button"
+                      onClick={() => payWithMetaMask(reservation.reservationId)}
+                      disabled={payingReservationId === reservation.reservationId}
+                    >
+                      Pay with MetaMask
+                    </button>
+                    {cryptoState && (
+                      <div className="crypto-status">
+                        <span>Status: {cryptoState.status}</span>
+                        <span>{cryptoState.message}</span>
+                        {cryptoState.walletAddress && (
+                          <span>Connected wallet: {shortAddress(cryptoState.walletAddress)}</span>
+                        )}
+                        {cryptoState.prepare && (
+                          <>
+                            <span>Network: {cryptoState.prepare.network}</span>
+                            <span>Amount RSD: {cryptoState.prepare.amountRsd}</span>
+                            <span>Amount ETH: {cryptoState.prepare.cryptoAmount}</span>
+                            <span>Merchant: {shortAddress(cryptoState.prepare.merchantAddress)}</span>
+                          </>
+                        )}
+                        {cryptoState.transactionHash && (
+                          <a
+                            href={`https://sepolia.etherscan.io/tx/${cryptoState.transactionHash}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Sepolia transaction
+                          </a>
+                        )}
+                        {cryptoState.transactionHash && cryptoState.status === 'WAITING_CONFIRMATION' && (
+                          <button
+                            type="button"
+                            onClick={() => verifyCryptoTransaction(reservation.reservationId)}
+                            disabled={payingReservationId === reservation.reservationId}
+                          >
+                            Verify transaction
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </article>
@@ -918,6 +1151,60 @@ function MyReservations({
         )}
       </div>
       {message && <p className="status-message">{message}</p>}
+      {error && <p className="error-message">{error}</p>}
+    </section>
+  );
+}
+
+function AdminReservationPanel({ refreshKey }: { refreshKey: number }) {
+  const [reservations, setReservations] = useState<AdminReservationResponse[]>([]);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiRequest<AdminReservationResponse[]>('/api/admin/reservations')
+      .then((response) => {
+        setReservations(response);
+        setError('');
+      })
+      .catch((err) => setError(getErrorMessage(err)));
+  }, [refreshKey]);
+
+  return (
+    <section className="data-section">
+      <h2>All Reservations</h2>
+      <div className="admin-reservation-list">
+        {reservations.length === 0 ? (
+          <p>No reservations yet.</p>
+        ) : (
+          reservations.map((reservation) => (
+            <article className="reservation-card" key={reservation.reservationId}>
+              <strong>{reservation.userEmail}</strong>
+              <span>{reservation.movieTitle}</span>
+              <span>{formatDateTime(reservation.startTime)}</span>
+              <span>{reservation.cinemaName} - {reservation.hallName}</span>
+              <span>Seats: {reservation.seats.join(', ')}</span>
+              <span>Total: {reservation.totalAmount} RSD</span>
+              <span className={`status-pill reservation-status-${reservation.reservationStatus.toLowerCase()}`}>
+                Reservation: {reservation.reservationStatus}
+              </span>
+              <span className={`status-pill payment-status-${(reservation.latestPaymentStatus ?? 'none').toLowerCase()}`}>
+                Payment: {reservation.latestPaymentStatus ?? 'No payment'}
+              </span>
+              <span>Method: {reservation.latestPaymentMethod ?? '-'}</span>
+              <span>Reference: {reservation.latestPaymentReference ?? '-'}</span>
+              {reservation.latestPaymentTransactionHash && (
+                <a
+                  href={`https://sepolia.etherscan.io/tx/${reservation.latestPaymentTransactionHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Tx: {shortAddress(reservation.latestPaymentTransactionHash)}
+                </a>
+              )}
+            </article>
+          ))
+        )}
+      </div>
       {error && <p className="error-message">{error}</p>}
     </section>
   );
@@ -1635,6 +1922,20 @@ function formatDateTime(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
+}
+
+function decimalEthToWeiHex(value: number | string) {
+  const [wholePart, fractionPart = ''] = String(value).split('.');
+  const paddedFraction = `${fractionPart}000000000000000000`.slice(0, 18);
+  const wei = BigInt(wholePart || '0') * 1000000000000000000n + BigInt(paddedFraction || '0');
+  return `0x${wei.toString(16)}`;
+}
+
+function shortAddress(value: string) {
+  if (value.length <= 14) {
+    return value;
+  }
+  return `${value.slice(0, 8)}...${value.slice(-6)}`;
 }
 
 function getErrorMessage(error: unknown) {

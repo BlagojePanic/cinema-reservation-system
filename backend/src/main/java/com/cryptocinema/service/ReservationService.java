@@ -13,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.cryptocinema.dto.ReservationRequest;
 import com.cryptocinema.dto.ReservationResponse;
+import com.cryptocinema.dto.AdminReservationResponse;
+import com.cryptocinema.entity.Payment;
 import com.cryptocinema.entity.PaymentStatus;
 import com.cryptocinema.entity.Reservation;
 import com.cryptocinema.entity.ReservationSeat;
@@ -137,6 +139,14 @@ public class ReservationService {
     }
 
     @Transactional
+    public List<AdminReservationResponse> findAllForAdmin() {
+        reservationExpirationService.expirePendingReservations();
+        return reservationRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(this::toAdminResponse)
+                .toList();
+    }
+
+    @Transactional
     public ReservationResponse cancel(Long id, Authentication authentication) {
         reservationExpirationService.expirePendingReservations();
         User currentUser = currentUser(authentication);
@@ -237,6 +247,35 @@ public class ReservationService {
                                 PaymentStatus.SUCCESS)
                         .map(PaymentService::toResponse)
                         .orElse(null));
+    }
+
+    private AdminReservationResponse toAdminResponse(Reservation reservation) {
+        Screening screening = reservation.getScreening();
+        List<String> seatLabels = reservationSeatRepository.findByReservationId(reservation.getId()).stream()
+                .map(reservationSeat -> label(reservationSeat.getScreeningSeat().getSeat()))
+                .sorted()
+                .toList();
+        Payment latestPayment = paymentRepository.findFirstByReservationIdOrderByCreatedAtDesc(reservation.getId())
+                .orElse(null);
+
+        return new AdminReservationResponse(
+                reservation.getId(),
+                reservation.getUser().getId(),
+                reservation.getUser().getEmail(),
+                screening.getMovie().getTitle(),
+                screening.getId(),
+                screening.getStartTime(),
+                screening.getHall().getCinema().getName(),
+                screening.getHall().getName(),
+                seatLabels,
+                reservation.getTotalAmount(),
+                reservation.getStatus(),
+                reservation.getCreatedAt(),
+                reservation.getExpiresAt(),
+                latestPayment == null ? null : latestPayment.getStatus(),
+                latestPayment == null ? null : latestPayment.getMethod(),
+                latestPayment == null ? null : latestPayment.getReference(),
+                latestPayment == null ? null : latestPayment.getTransactionHash());
     }
 
     private String label(Seat seat) {

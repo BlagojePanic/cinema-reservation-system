@@ -15,6 +15,13 @@ public record PaymentResponse(
         PaymentStatus status,
         String reference,
         LocalDateTime createdAt,
-        LocalDateTime completedAt
+        LocalDateTime completedAt,
+        String cryptoCurrency,
+        BigDecimal cryptoAmount,
+        BigDecimal exchangeRate,
+        String network,
+        Long chainId,
+        String walletAddress,
+        String transactionHash
 ) {
 }

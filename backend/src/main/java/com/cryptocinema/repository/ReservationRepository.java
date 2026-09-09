@@ -22,6 +22,8 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
 
     List<Reservation> findByStatus(ReservationStatus status);
 
+    List<Reservation> findAllByOrderByCreatedAtDesc();
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select reservation from Reservation reservation where reservation.id = :id")
     Optional<Reservation> findByIdForUpdate(@Param("id") Long id);
