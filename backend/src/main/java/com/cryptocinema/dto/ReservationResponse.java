@@ -18,5 +18,6 @@ public record ReservationResponse(
         BigDecimal ticketPrice,
         BigDecimal totalAmount,
         LocalDateTime createdAt,
-        LocalDateTime expiresAt
+        LocalDateTime expiresAt,
+        PaymentResponse payment
 ) {}

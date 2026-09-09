@@ -8,6 +8,7 @@ import {
   getToken,
   HallResponse,
   MovieResponse,
+  PaymentResponse,
   ReservationResponse,
   saveToken,
   ScreeningResponse,
@@ -789,7 +790,10 @@ function MyReservations({
   onChanged: () => void;
 }) {
   const [reservations, setReservations] = useState<ReservationResponse[]>([]);
+  const [paymentsByReservation, setPaymentsByReservation] = useState<Record<number, PaymentResponse[]>>({});
+  const [payingReservationId, setPayingReservationId] = useState<number | null>(null);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
     loadReservations();
@@ -798,7 +802,16 @@ function MyReservations({
   async function loadReservations() {
     try {
       const response = await apiRequest<ReservationResponse[]>('/api/reservations/me');
+      const paymentPairs = await Promise.all(
+        response.map(async (reservation) => {
+          const payments = await apiRequest<PaymentResponse[]>(
+            `/api/reservations/${reservation.reservationId}/payments`,
+          );
+          return [reservation.reservationId, payments] as const;
+        }),
+      );
       setReservations(response);
+      setPaymentsByReservation(Object.fromEntries(paymentPairs));
       setError('');
     } catch (err) {
       setError(getErrorMessage(err));
@@ -810,10 +823,38 @@ function MyReservations({
       await apiRequest<ReservationResponse>(`/api/reservations/${reservationId}/cancel`, {
         method: 'POST',
       });
+      setMessage('Reservation cancelled.');
       await loadReservations();
       onChanged();
     } catch (err) {
       setError(getErrorMessage(err));
+    }
+  }
+
+  async function payReservation(reservationId: number, simulateSuccess: boolean) {
+    setPayingReservationId(reservationId);
+    setError('');
+    setMessage('');
+    try {
+      const payment = await apiRequest<PaymentResponse>(`/api/reservations/${reservationId}/payment`, {
+        method: 'POST',
+        body: JSON.stringify({
+          method: 'CARD_SIMULATION',
+          simulateSuccess,
+        }),
+      });
+      setMessage(
+        payment.status === 'SUCCESS'
+          ? 'Payment successful'
+          : 'Payment failed. Please try again.',
+      );
+      await loadReservations();
+      onChanged();
+    } catch (err) {
+      setError(getErrorMessage(err));
+      await loadReservations();
+    } finally {
+      setPayingReservationId(null);
     }
   }
 
@@ -824,24 +865,59 @@ function MyReservations({
         {reservations.length === 0 ? (
           <p>No reservations yet.</p>
         ) : (
-          reservations.map((reservation) => (
-            <article className="reservation-card" key={reservation.reservationId}>
-              <strong>{reservation.movieTitle}</strong>
-              <span>{formatDateTime(reservation.screeningStartTime)}</span>
-              <span>{reservation.cinemaName} - {reservation.hallName}</span>
-              <span>Seats: {reservation.seatLabels.join(', ')}</span>
-              <span>Total: {reservation.totalAmount} RSD</span>
-              <span>Status: {reservation.status}</span>
-              <span>Expires: {formatDateTime(reservation.expiresAt)}</span>
-              {reservation.status === 'PENDING_PAYMENT' && (
-                <button type="button" onClick={() => cancelReservation(reservation.reservationId)}>
-                  Cancel reservation
-                </button>
-              )}
-            </article>
-          ))
+          reservations.map((reservation) => {
+            const payments = paymentsByReservation[reservation.reservationId] ?? [];
+            const latestPayment = reservation.payment ?? payments[0] ?? null;
+
+            return (
+              <article className="reservation-card" key={reservation.reservationId}>
+                <strong>{reservation.movieTitle}</strong>
+                <span>{formatDateTime(reservation.screeningStartTime)}</span>
+                <span>{reservation.cinemaName} - {reservation.hallName}</span>
+                <span>Seats: {reservation.seatLabels.join(', ')}</span>
+                <span>Total: {reservation.totalAmount} RSD</span>
+                <span>Status: {reservation.status}</span>
+                <span>Expires: {formatDateTime(reservation.expiresAt)}</span>
+                {latestPayment && (
+                  <>
+                    <span>Payment: {latestPayment.status}</span>
+                    <span>Method: {latestPayment.method}</span>
+                  </>
+                )}
+                {reservation.status === 'PENDING_PAYMENT' && (
+                  <div className="payment-panel">
+                    <strong>Simulated card payment</strong>
+                    <div className="actions">
+                      <button
+                        type="button"
+                        onClick={() => payReservation(reservation.reservationId, true)}
+                        disabled={payingReservationId === reservation.reservationId}
+                      >
+                        Simulate SUCCESS
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => payReservation(reservation.reservationId, false)}
+                        disabled={payingReservationId === reservation.reservationId}
+                      >
+                        Simulate FAILURE
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => cancelReservation(reservation.reservationId)}
+                        disabled={payingReservationId === reservation.reservationId}
+                      >
+                        Cancel reservation
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })
         )}
       </div>
+      {message && <p className="status-message">{message}</p>}
       {error && <p className="error-message">{error}</p>}
     </section>
   );
