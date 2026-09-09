@@ -19,15 +19,21 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.cryptocinema.dto.ScreeningRequest;
 import com.cryptocinema.dto.ScreeningResponse;
+import com.cryptocinema.dto.ScreeningSeatResponse;
+import com.cryptocinema.service.ScreeningSeatService;
 import com.cryptocinema.service.ScreeningService;
+
+import org.springframework.security.core.Authentication;
 
 @RestController
 public class ScreeningController {
 
     private final ScreeningService screeningService;
+    private final ScreeningSeatService screeningSeatService;
 
-    public ScreeningController(ScreeningService screeningService) {
+    public ScreeningController(ScreeningService screeningService, ScreeningSeatService screeningSeatService) {
         this.screeningService = screeningService;
+        this.screeningSeatService = screeningSeatService;
     }
 
     @GetMapping("/api/screenings")
@@ -53,6 +59,32 @@ public class ScreeningController {
     @GetMapping("/api/halls/{hallId}/screenings")
     public List<ScreeningResponse> findByHall(@PathVariable Long hallId) {
         return screeningService.findByHall(hallId);
+    }
+
+    @GetMapping("/api/screenings/{screeningId}/seats")
+    public List<ScreeningSeatResponse> findSeats(
+            @PathVariable Long screeningId,
+            Authentication authentication
+    ) {
+        return screeningSeatService.findByScreening(screeningId, authentication);
+    }
+
+    @PostMapping("/api/screenings/{screeningId}/seats/{screeningSeatId}/hold")
+    public ScreeningSeatResponse holdSeat(
+            @PathVariable Long screeningId,
+            @PathVariable Long screeningSeatId,
+            Authentication authentication
+    ) {
+        return screeningSeatService.hold(screeningId, screeningSeatId, authentication);
+    }
+
+    @DeleteMapping("/api/screenings/{screeningId}/seats/{screeningSeatId}/hold")
+    public ScreeningSeatResponse releaseSeat(
+            @PathVariable Long screeningId,
+            @PathVariable Long screeningSeatId,
+            Authentication authentication
+    ) {
+        return screeningSeatService.release(screeningId, screeningSeatId, authentication);
     }
 
     @PostMapping("/api/admin/screenings")

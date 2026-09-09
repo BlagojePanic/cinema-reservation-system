@@ -143,6 +143,81 @@ h3 {
   text-align: center;
 }
 
+.seat-map {
+  border-top: 1px solid #e5e7eb;
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.seat-map h4 {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.screen-line {
+  background: #e5e7eb;
+  border-radius: 4px;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  padding: 6px;
+  text-align: center;
+}
+
+.seat-row {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 28px 1fr;
+}
+
+.seat-row div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.seat-button {
+  border: 1px solid transparent;
+  border-radius: 4px;
+  min-width: 38px;
+  padding: 8px 10px;
+}
+
+.seat-available {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.seat-held {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.seat-reserved {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.seat-owned {
+  box-shadow: 0 0 0 2px #2563eb inset;
+}
+
+.seat-legend {
+  color: #475569;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  font-weight: 700;
+  gap: 10px;
+}
+
 .movie-grid {
   display: grid;
   gap: 14px;

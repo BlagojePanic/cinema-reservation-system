@@ -70,6 +70,12 @@ public class AuthService {
         return new AuthResponse(token, "Bearer", toResponse(user));
     }
 
+    public UserResponse currentUser(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new InvalidCredentialsException("Invalid authentication"));
+        return toResponse(user);
+    }
+
     private UserResponse toResponse(User user) {
         return new UserResponse(
                 user.getId(),

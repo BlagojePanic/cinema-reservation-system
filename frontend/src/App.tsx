@@ -10,6 +10,7 @@ import {
   MovieResponse,
   saveToken,
   ScreeningResponse,
+  ScreeningSeatResponse,
   SeatResponse,
   UserResponse,
 } from './api';
@@ -36,6 +37,19 @@ function App() {
       })
       .then((data) => setHealth(data.status === 'UP' ? 'up' : 'down'))
       .catch(() => setHealth('down'));
+  }, []);
+
+  useEffect(() => {
+    if (!getToken()) {
+      return;
+    }
+
+    apiRequest<UserResponse>('/api/auth/me')
+      .then((user) => setCurrentUser(user))
+      .catch(() => {
+        clearToken();
+        setCurrentUser(null);
+      });
   }, []);
 
   useEffect(() => {
@@ -88,6 +102,12 @@ function App() {
     setScreeningRefreshKey((value) => value + 1);
   }
 
+  function refreshAllData() {
+    refreshStructureData();
+    refreshMovieData();
+    refreshScreeningData();
+  }
+
   return (
     <main className="app-shell">
       <section className="status-panel">
@@ -125,13 +145,17 @@ function App() {
               </p>
             )}
             {getToken() && !currentUser && <p className="session">JWT is saved in localStorage.</p>}
-            <MovieBrowser refreshKey={movieRefreshKey} screeningRefreshKey={screeningRefreshKey} />
-            <RepertoireBrowser refreshKey={screeningRefreshKey} />
+            <MovieBrowser
+              refreshKey={movieRefreshKey}
+              screeningRefreshKey={screeningRefreshKey}
+              currentUser={currentUser}
+            />
+            <RepertoireBrowser refreshKey={screeningRefreshKey} currentUser={currentUser} />
             {currentUser?.role === 'ADMIN' && (
               <AdminMoviePanel
                 refreshKey={movieRefreshKey}
                 onChanged={() => {
-                  refreshMovieData();
+                  refreshAllData();
                   setStatusMessage('Movie catalog updated.');
                 }}
               />
@@ -141,7 +165,7 @@ function App() {
               <AdminStructurePanel
                 refreshKey={structureRefreshKey}
                 onChanged={() => {
-                  refreshStructureData();
+                  refreshAllData();
                   setStatusMessage('Cinema structure updated.');
                 }}
               />
@@ -150,7 +174,7 @@ function App() {
               <AdminScreeningPanel
                 refreshKey={screeningRefreshKey}
                 onChanged={() => {
-                  refreshScreeningData();
+                  refreshAllData();
                   setStatusMessage('Screening schedule updated.');
                 }}
               />
@@ -283,13 +307,16 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: (auth: AuthResponse) => void })
 function MovieBrowser({
   refreshKey,
   screeningRefreshKey,
+  currentUser,
 }: {
   refreshKey: number;
   screeningRefreshKey: number;
+  currentUser: UserResponse | null;
 }) {
   const [movies, setMovies] = useState<MovieResponse[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<MovieResponse | null>(null);
   const [selectedMovieScreenings, setSelectedMovieScreenings] = useState<ScreeningResponse[]>([]);
+  const [selectedScreening, setSelectedScreening] = useState<ScreeningResponse | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -299,6 +326,7 @@ function MovieBrowser({
         setSelectedMovie((current) =>
           current ? response.find((movie) => movie.id === current.id) ?? null : null,
         );
+        setSelectedScreening(null);
         setError('');
       })
       .catch((err) => setError(getErrorMessage(err)));
@@ -324,6 +352,7 @@ function MovieBrowser({
       const screenings = await apiRequest<ScreeningResponse[]>(`/api/movies/${movieId}/screenings`);
       setSelectedMovie(movie);
       setSelectedMovieScreenings(screenings);
+      setSelectedScreening(null);
       setError('');
     } catch (err) {
       setError(getErrorMessage(err));
@@ -398,7 +427,10 @@ function MovieBrowser({
                 Trailer
               </a>
             )}
-            <MovieScreeningList screenings={selectedMovieScreenings} />
+            <MovieScreeningList screenings={selectedMovieScreenings} onSelect={setSelectedScreening} />
+            {selectedScreening && (
+              <SeatMap screening={selectedScreening} currentUser={currentUser} refreshKey={screeningRefreshKey} />
+            )}
           </div>
         </article>
       )}
@@ -408,7 +440,13 @@ function MovieBrowser({
   );
 }
 
-function MovieScreeningList({ screenings }: { screenings: ScreeningResponse[] }) {
+function MovieScreeningList({
+  screenings,
+  onSelect,
+}: {
+  screenings: ScreeningResponse[];
+  onSelect: (screening: ScreeningResponse) => void;
+}) {
   const groupedScreenings = screenings.reduce<Record<string, ScreeningResponse[]>>((groups, screening) => {
     const date = screening.startTime.slice(0, 10);
     groups[date] = [...(groups[date] ?? []), screening];
@@ -426,7 +464,12 @@ function MovieScreeningList({ screenings }: { screenings: ScreeningResponse[] })
             <div className="screening-day" key={date}>
               <strong>{formatDate(date)}</strong>
               {dailyScreenings.map((screening) => (
-                <button className="screening-time" key={screening.id} type="button">
+                <button
+                  className="screening-time"
+                  key={screening.id}
+                  type="button"
+                  onClick={() => onSelect(screening)}
+                >
                   {screening.cinemaName} - {screening.hallName} - {formatTime(screening.startTime)}
                 </button>
               ))}
@@ -438,11 +481,18 @@ function MovieScreeningList({ screenings }: { screenings: ScreeningResponse[] })
   );
 }
 
-function RepertoireBrowser({ refreshKey }: { refreshKey: number }) {
+function RepertoireBrowser({
+  refreshKey,
+  currentUser,
+}: {
+  refreshKey: number;
+  currentUser: UserResponse | null;
+}) {
   const [cities, setCities] = useState<CityResponse[]>([]);
   const [cinemas, setCinemas] = useState<CinemaResponse[]>([]);
   const [movies, setMovies] = useState<MovieResponse[]>([]);
   const [screenings, setScreenings] = useState<ScreeningResponse[]>([]);
+  const [selectedScreening, setSelectedScreening] = useState<ScreeningResponse | null>(null);
   const [selectedCityId, setSelectedCityId] = useState('');
   const [selectedCinemaId, setSelectedCinemaId] = useState('');
   const [selectedMovieId, setSelectedMovieId] = useState('');
@@ -479,6 +529,9 @@ function RepertoireBrowser({ refreshKey }: { refreshKey: number }) {
     apiRequest<ScreeningResponse[]>(`/api/screenings${query ? `?${query}` : ''}`)
       .then((response) => {
         setScreenings(response);
+        setSelectedScreening((current) =>
+          current ? response.find((screening) => screening.id === current.id) ?? null : null,
+        );
         setError('');
       })
       .catch((err) => setError(getErrorMessage(err)));
@@ -543,12 +596,111 @@ function RepertoireBrowser({ refreshKey }: { refreshKey: number }) {
               <span>{formatDate(screening.startTime)} at {formatTime(screening.startTime)}</span>
               <span>{screening.cityName} - {screening.cinemaName} - {screening.hallName}</span>
               <span>{screening.ticketPrice} RSD</span>
+              <button type="button" onClick={() => setSelectedScreening(screening)}>
+                View seats
+              </button>
             </article>
           ))
         )}
       </div>
 
+      {selectedScreening && (
+        <SeatMap screening={selectedScreening} currentUser={currentUser} refreshKey={refreshKey} />
+      )}
+
       {error && <p className="error-message">{error}</p>}
+    </section>
+  );
+}
+
+function SeatMap({
+  screening,
+  currentUser,
+  refreshKey,
+}: {
+  screening: ScreeningResponse;
+  currentUser: UserResponse | null;
+  refreshKey: number;
+}) {
+  const [seats, setSeats] = useState<ScreeningSeatResponse[]>([]);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    loadSeats();
+  }, [screening.id, refreshKey]);
+
+  async function loadSeats() {
+    try {
+      const response = await apiRequest<ScreeningSeatResponse[]>(`/api/screenings/${screening.id}/seats`);
+      setSeats(response);
+      setMessage('');
+    } catch (err) {
+      setMessage(getErrorMessage(err));
+    }
+  }
+
+  async function toggleSeat(seat: ScreeningSeatResponse) {
+    if (!currentUser) {
+      setMessage('Please log in to select seats.');
+      return;
+    }
+
+    if (seat.status === 'HELD' && !seat.heldByCurrentUser) {
+      setMessage('This seat is no longer available.');
+      return;
+    }
+
+    if (seat.status === 'RESERVED') {
+      setMessage('This seat is no longer available.');
+      return;
+    }
+
+    const method = seat.heldByCurrentUser ? 'DELETE' : 'POST';
+    try {
+      await apiRequest(`/api/screenings/${screening.id}/seats/${seat.screeningSeatId}/hold`, {
+        method,
+      });
+      await loadSeats();
+    } catch (err) {
+      setMessage(getErrorMessage(err) === 'This seat is no longer available.'
+        ? 'This seat is no longer available.'
+        : getErrorMessage(err));
+      await loadSeats();
+    }
+  }
+
+  const groupedSeats = seats.reduce<Record<string, ScreeningSeatResponse[]>>((groups, seat) => {
+    groups[seat.rowLabel] = [...(groups[seat.rowLabel] ?? []), seat];
+    return groups;
+  }, {});
+
+  return (
+    <section className="seat-map">
+      <h4>{screening.movieTitle} seats</h4>
+      <div className="screen-line">SCREEN</div>
+      {Object.entries(groupedSeats).map(([rowLabel, rowSeats]) => (
+        <div className="seat-row" key={rowLabel}>
+          <strong>{rowLabel}</strong>
+          <div>
+            {rowSeats.map((seat) => (
+              <button
+                className={`seat-button seat-${seat.status.toLowerCase()}${seat.heldByCurrentUser ? ' seat-owned' : ''}`}
+                key={seat.screeningSeatId}
+                type="button"
+                onClick={() => toggleSeat(seat)}
+              >
+                {seat.seatNumber}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="seat-legend">
+        <span>AVAILABLE</span>
+        <span>HELD</span>
+        <span>RESERVED</span>
+      </div>
+      {message && <p className="error-message">{message}</p>}
     </section>
   );
 }

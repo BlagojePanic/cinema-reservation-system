@@ -14,6 +14,7 @@ import com.cryptocinema.entity.Seat;
 import com.cryptocinema.exception.ConflictException;
 import com.cryptocinema.exception.ResourceNotFoundException;
 import com.cryptocinema.repository.HallRepository;
+import com.cryptocinema.repository.ScreeningSeatRepository;
 import com.cryptocinema.repository.SeatRepository;
 
 @Service
@@ -21,10 +22,16 @@ public class SeatService {
 
     private final SeatRepository seatRepository;
     private final HallRepository hallRepository;
+    private final ScreeningSeatRepository screeningSeatRepository;
 
-    public SeatService(SeatRepository seatRepository, HallRepository hallRepository) {
+    public SeatService(
+            SeatRepository seatRepository,
+            HallRepository hallRepository,
+            ScreeningSeatRepository screeningSeatRepository
+    ) {
         this.seatRepository = seatRepository;
         this.hallRepository = hallRepository;
+        this.screeningSeatRepository = screeningSeatRepository;
     }
 
     @Transactional(readOnly = true)
@@ -77,6 +84,9 @@ public class SeatService {
     public void delete(Long id) {
         Seat seat = seatRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Seat not found"));
+        if (screeningSeatRepository.existsBySeatId(id)) {
+            throw new ConflictException("Seat cannot be deleted while it is used by screenings");
+        }
         seatRepository.delete(seat);
     }
 
