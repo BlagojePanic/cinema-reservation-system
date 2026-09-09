@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.cryptocinema.dto.PaymentRequest;
 import com.cryptocinema.dto.PaymentResponse;
+import com.cryptocinema.dto.CryptoPaymentConfirmRequest;
+import com.cryptocinema.dto.CryptoPaymentPrepareResponse;
 import com.cryptocinema.dto.ReservationRequest;
 import com.cryptocinema.dto.ReservationResponse;
 import com.cryptocinema.service.PaymentService;
@@ -66,5 +68,22 @@ public class ReservationController {
     @GetMapping("/{id}/payments")
     public List<PaymentResponse> findPayments(@PathVariable Long id, Authentication authentication) {
         return paymentService.findForReservation(id, authentication);
+    }
+
+    @PostMapping("/{id}/crypto-payment/prepare")
+    public CryptoPaymentPrepareResponse prepareCryptoPayment(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        return paymentService.prepareCryptoPayment(id, authentication);
+    }
+
+    @PostMapping("/{id}/crypto-payment/confirm")
+    public PaymentResponse confirmCryptoPayment(
+            @PathVariable Long id,
+            @Valid @RequestBody CryptoPaymentConfirmRequest request,
+            Authentication authentication
+    ) {
+        return paymentService.confirmCryptoPayment(id, request, authentication);
     }
 }

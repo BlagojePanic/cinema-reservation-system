@@ -21,3 +21,9 @@ app:
   admin:
     email: ${ADMIN_EMAIL:}
     password: ${ADMIN_PASSWORD:}
+  crypto:
+    merchant-address: ${CRYPTO_MERCHANT_ADDRESS:}
+    eth-rsd-rate: ${ETH_RSD_RATE:350000}
+    web3-rpc-url: ${WEB3_RPC_URL:}
+    network: Sepolia
+    chain-id: 11155111

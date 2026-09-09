@@ -255,6 +255,47 @@ h3 {
   padding-top: 10px;
 }
 
+.crypto-status,
+.admin-reservation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.crypto-status {
+  border: 1px solid #d8dee9;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.status-pill {
+  border-radius: 6px;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  width: fit-content;
+}
+
+.reservation-status-pending_payment,
+.payment-status-pending,
+.payment-status-none {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.reservation-status-confirmed,
+.payment-status-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.reservation-status-cancelled,
+.reservation-status-expired,
+.payment-status-failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .movie-grid {
   display: grid;
   gap: 14px;
