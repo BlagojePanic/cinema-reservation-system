@@ -81,6 +81,23 @@ export type ScreeningSeatResponse = {
   holdExpiresAt: string | null;
 };
 
+export type ReservationStatus = 'PENDING_PAYMENT' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED';
+
+export type ReservationResponse = {
+  reservationId: number;
+  status: ReservationStatus;
+  movieTitle: string;
+  screeningId: number;
+  screeningStartTime: string;
+  cinemaName: string;
+  hallName: string;
+  seatLabels: string[];
+  ticketPrice: number;
+  totalAmount: number;
+  createdAt: string;
+  expiresAt: string;
+};
+
 export type ApiError = {
   message: string;
   status?: number;

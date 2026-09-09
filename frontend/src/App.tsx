@@ -8,6 +8,7 @@ import {
   getToken,
   HallResponse,
   MovieResponse,
+  ReservationResponse,
   saveToken,
   ScreeningResponse,
   ScreeningSeatResponse,
@@ -26,6 +27,7 @@ function App() {
   const [structureRefreshKey, setStructureRefreshKey] = useState(0);
   const [movieRefreshKey, setMovieRefreshKey] = useState(0);
   const [screeningRefreshKey, setScreeningRefreshKey] = useState(0);
+  const [reservationRefreshKey, setReservationRefreshKey] = useState(0);
 
   useEffect(() => {
     fetch('/api/health')
@@ -102,10 +104,15 @@ function App() {
     setScreeningRefreshKey((value) => value + 1);
   }
 
+  function refreshReservationData() {
+    setReservationRefreshKey((value) => value + 1);
+  }
+
   function refreshAllData() {
     refreshStructureData();
     refreshMovieData();
     refreshScreeningData();
+    refreshReservationData();
   }
 
   return (
@@ -149,8 +156,16 @@ function App() {
               refreshKey={movieRefreshKey}
               screeningRefreshKey={screeningRefreshKey}
               currentUser={currentUser}
+              onReservationChanged={refreshAllData}
             />
-            <RepertoireBrowser refreshKey={screeningRefreshKey} currentUser={currentUser} />
+            <RepertoireBrowser
+              refreshKey={screeningRefreshKey}
+              currentUser={currentUser}
+              onReservationChanged={refreshAllData}
+            />
+            {currentUser && (
+              <MyReservations refreshKey={reservationRefreshKey} onChanged={refreshAllData} />
+            )}
             {currentUser?.role === 'ADMIN' && (
               <AdminMoviePanel
                 refreshKey={movieRefreshKey}
@@ -308,10 +323,12 @@ function MovieBrowser({
   refreshKey,
   screeningRefreshKey,
   currentUser,
+  onReservationChanged,
 }: {
   refreshKey: number;
   screeningRefreshKey: number;
   currentUser: UserResponse | null;
+  onReservationChanged: () => void;
 }) {
   const [movies, setMovies] = useState<MovieResponse[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<MovieResponse | null>(null);
@@ -429,7 +446,12 @@ function MovieBrowser({
             )}
             <MovieScreeningList screenings={selectedMovieScreenings} onSelect={setSelectedScreening} />
             {selectedScreening && (
-              <SeatMap screening={selectedScreening} currentUser={currentUser} refreshKey={screeningRefreshKey} />
+              <SeatMap
+                screening={selectedScreening}
+                currentUser={currentUser}
+                refreshKey={screeningRefreshKey}
+                onReservationChanged={onReservationChanged}
+              />
             )}
           </div>
         </article>
@@ -484,9 +506,11 @@ function MovieScreeningList({
 function RepertoireBrowser({
   refreshKey,
   currentUser,
+  onReservationChanged,
 }: {
   refreshKey: number;
   currentUser: UserResponse | null;
+  onReservationChanged: () => void;
 }) {
   const [cities, setCities] = useState<CityResponse[]>([]);
   const [cinemas, setCinemas] = useState<CinemaResponse[]>([]);
@@ -605,7 +629,12 @@ function RepertoireBrowser({
       </div>
 
       {selectedScreening && (
-        <SeatMap screening={selectedScreening} currentUser={currentUser} refreshKey={refreshKey} />
+        <SeatMap
+          screening={selectedScreening}
+          currentUser={currentUser}
+          refreshKey={refreshKey}
+          onReservationChanged={onReservationChanged}
+        />
       )}
 
       {error && <p className="error-message">{error}</p>}
@@ -617,10 +646,12 @@ function SeatMap({
   screening,
   currentUser,
   refreshKey,
+  onReservationChanged,
 }: {
   screening: ScreeningResponse;
   currentUser: UserResponse | null;
   refreshKey: number;
+  onReservationChanged: () => void;
 }) {
   const [seats, setSeats] = useState<ScreeningSeatResponse[]>([]);
   const [message, setMessage] = useState('');
@@ -628,6 +659,14 @@ function SeatMap({
   useEffect(() => {
     loadSeats();
   }, [screening.id, refreshKey]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      loadSeats();
+    }, 4000);
+
+    return () => window.clearInterval(intervalId);
+  }, [screening.id]);
 
   async function loadSeats() {
     try {
@@ -669,10 +708,37 @@ function SeatMap({
     }
   }
 
+  async function reserveSelectedSeats() {
+    const selectedSeats = seats.filter((seat) => seat.heldByCurrentUser);
+    if (selectedSeats.length === 0) {
+      setMessage('Select at least one seat.');
+      return;
+    }
+
+    try {
+      const reservation = await apiRequest<ReservationResponse>('/api/reservations', {
+        method: 'POST',
+        body: JSON.stringify({
+          screeningId: screening.id,
+          screeningSeatIds: selectedSeats.map((seat) => seat.screeningSeatId),
+        }),
+      });
+      setMessage(`Reservation created: ${reservation.status}. Expires at ${formatDateTime(reservation.expiresAt)}.`);
+      await loadSeats();
+      onReservationChanged();
+    } catch (err) {
+      setMessage(getErrorMessage(err));
+      await loadSeats();
+    }
+  }
+
   const groupedSeats = seats.reduce<Record<string, ScreeningSeatResponse[]>>((groups, seat) => {
     groups[seat.rowLabel] = [...(groups[seat.rowLabel] ?? []), seat];
     return groups;
   }, {});
+  const selectedSeats = seats.filter((seat) => seat.heldByCurrentUser);
+  const selectedLabels = selectedSeats.map((seat) => `${seat.rowLabel}${seat.seatNumber}`);
+  const total = selectedSeats.length * screening.ticketPrice;
 
   return (
     <section className="seat-map">
@@ -700,7 +766,83 @@ function SeatMap({
         <span>HELD</span>
         <span>RESERVED</span>
       </div>
+      {currentUser && (
+        <div className="reservation-summary">
+          <strong>Selected seats: {selectedLabels.length ? selectedLabels.join(', ') : 'None'}</strong>
+          <span>{selectedSeats.length} x {screening.ticketPrice} RSD</span>
+          <span>Total: {total} RSD</span>
+          <button type="button" onClick={reserveSelectedSeats} disabled={selectedSeats.length === 0}>
+            Reserve seats
+          </button>
+        </div>
+      )}
       {message && <p className="error-message">{message}</p>}
+    </section>
+  );
+}
+
+function MyReservations({
+  refreshKey,
+  onChanged,
+}: {
+  refreshKey: number;
+  onChanged: () => void;
+}) {
+  const [reservations, setReservations] = useState<ReservationResponse[]>([]);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    loadReservations();
+  }, [refreshKey]);
+
+  async function loadReservations() {
+    try {
+      const response = await apiRequest<ReservationResponse[]>('/api/reservations/me');
+      setReservations(response);
+      setError('');
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function cancelReservation(reservationId: number) {
+    try {
+      await apiRequest<ReservationResponse>(`/api/reservations/${reservationId}/cancel`, {
+        method: 'POST',
+      });
+      await loadReservations();
+      onChanged();
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  return (
+    <section className="data-section">
+      <h2>My Reservations</h2>
+      <div className="reservation-list">
+        {reservations.length === 0 ? (
+          <p>No reservations yet.</p>
+        ) : (
+          reservations.map((reservation) => (
+            <article className="reservation-card" key={reservation.reservationId}>
+              <strong>{reservation.movieTitle}</strong>
+              <span>{formatDateTime(reservation.screeningStartTime)}</span>
+              <span>{reservation.cinemaName} - {reservation.hallName}</span>
+              <span>Seats: {reservation.seatLabels.join(', ')}</span>
+              <span>Total: {reservation.totalAmount} RSD</span>
+              <span>Status: {reservation.status}</span>
+              <span>Expires: {formatDateTime(reservation.expiresAt)}</span>
+              {reservation.status === 'PENDING_PAYMENT' && (
+                <button type="button" onClick={() => cancelReservation(reservation.reservationId)}>
+                  Cancel reservation
+                </button>
+              )}
+            </article>
+          ))
+        )}
+      </div>
+      {error && <p className="error-message">{error}</p>}
     </section>
   );
 }
@@ -1404,6 +1546,16 @@ function formatDate(value: string) {
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat('sr-RS', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat('sr-RS', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));

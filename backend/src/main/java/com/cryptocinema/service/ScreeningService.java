@@ -16,6 +16,7 @@ import com.cryptocinema.entity.Cinema;
 import com.cryptocinema.entity.City;
 import com.cryptocinema.entity.Hall;
 import com.cryptocinema.entity.Movie;
+import com.cryptocinema.entity.ReservationStatus;
 import com.cryptocinema.entity.Seat;
 import com.cryptocinema.entity.Screening;
 import com.cryptocinema.entity.ScreeningSeat;
@@ -24,6 +25,7 @@ import com.cryptocinema.exception.ConflictException;
 import com.cryptocinema.exception.ResourceNotFoundException;
 import com.cryptocinema.repository.HallRepository;
 import com.cryptocinema.repository.MovieRepository;
+import com.cryptocinema.repository.ReservationRepository;
 import com.cryptocinema.repository.ScreeningSeatRepository;
 import com.cryptocinema.repository.ScreeningRepository;
 import com.cryptocinema.repository.SeatRepository;
@@ -38,19 +40,25 @@ public class ScreeningService {
     private final MovieRepository movieRepository;
     private final HallRepository hallRepository;
     private final SeatRepository seatRepository;
+    private final ReservationRepository reservationRepository;
+    private final ReservationExpirationService reservationExpirationService;
 
     public ScreeningService(
             ScreeningRepository screeningRepository,
             ScreeningSeatRepository screeningSeatRepository,
             MovieRepository movieRepository,
             HallRepository hallRepository,
-            SeatRepository seatRepository
+            SeatRepository seatRepository,
+            ReservationRepository reservationRepository,
+            ReservationExpirationService reservationExpirationService
     ) {
         this.screeningRepository = screeningRepository;
         this.screeningSeatRepository = screeningSeatRepository;
         this.movieRepository = movieRepository;
         this.hallRepository = hallRepository;
         this.seatRepository = seatRepository;
+        this.reservationRepository = reservationRepository;
+        this.reservationExpirationService = reservationExpirationService;
     }
 
     @Transactional(readOnly = true)
@@ -115,7 +123,9 @@ public class ScreeningService {
 
     @Transactional
     public ScreeningResponse update(Long id, ScreeningRequest request) {
+        reservationExpirationService.expirePendingReservations();
         Screening screening = getScreening(id);
+        ensureNoActiveReservations(id, "Screening cannot be updated while it has active reservations.");
         Movie movie = getMovie(request.movieId());
         Hall hall = getHall(request.hallId());
         boolean hallChanged = !screening.getHall().getId().equals(hall.getId());
@@ -145,7 +155,9 @@ public class ScreeningService {
 
     @Transactional
     public void delete(Long id) {
+        reservationExpirationService.expirePendingReservations();
         Screening screening = getScreening(id);
+        ensureNoActiveReservations(id, "Screening cannot be deleted while it has active reservations.");
         ensureNoHeldOrReservedSeats(id, "Screening cannot be deleted while it has held or reserved seats.");
         screeningSeatRepository.deleteByScreeningId(id);
         screeningRepository.delete(screening);
@@ -202,6 +214,14 @@ public class ScreeningService {
                 ScreeningSeatStatus.HELD,
                 ScreeningSeatStatus.RESERVED);
         if (screeningSeatRepository.existsByScreeningIdAndStatusIn(screeningId, blockingStatuses)) {
+            throw new ConflictException(message);
+        }
+    }
+
+    private void ensureNoActiveReservations(Long screeningId, String message) {
+        if (reservationRepository.existsByScreeningIdAndStatusIn(
+                screeningId,
+                List.of(ReservationStatus.PENDING_PAYMENT, ReservationStatus.CONFIRMED))) {
             throw new ConflictException(message);
         }
     }

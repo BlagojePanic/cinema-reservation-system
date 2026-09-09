@@ -35,6 +35,10 @@ public interface ScreeningSeatRepository extends JpaRepository<ScreeningSeat, Lo
             + "where screeningSeat.id = :id and screeningSeat.screening.id = :screeningId")
     Optional<ScreeningSeat> findByIdAndScreeningIdForUpdate(@Param("id") Long id, @Param("screeningId") Long screeningId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select screeningSeat from ScreeningSeat screeningSeat where screeningSeat.id in :ids")
+    List<ScreeningSeat> findAllByIdForUpdate(@Param("ids") Collection<Long> ids);
+
     @Modifying
     @Transactional
     void deleteByScreeningId(Long screeningId);

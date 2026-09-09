@@ -218,6 +218,35 @@ h3 {
   gap: 10px;
 }
 
+.reservation-summary {
+  border: 1px solid #d8dee9;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.reservation-summary span {
+  color: #475569;
+}
+
+.reservation-list {
+  display: grid;
+  gap: 12px;
+}
+
+.reservation-card {
+  border: 1px solid #d8dee9;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.reservation-card span {
+  color: #475569;
+}
+
 .movie-grid {
   display: grid;
   gap: 14px;

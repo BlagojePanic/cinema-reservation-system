@@ -31,21 +31,25 @@ public class ScreeningSeatService {
     private final ScreeningRepository screeningRepository;
     private final ScreeningService screeningService;
     private final UserRepository userRepository;
+    private final ReservationExpirationService reservationExpirationService;
 
     public ScreeningSeatService(
             ScreeningSeatRepository screeningSeatRepository,
             ScreeningRepository screeningRepository,
             ScreeningService screeningService,
-            UserRepository userRepository
+            UserRepository userRepository,
+            ReservationExpirationService reservationExpirationService
     ) {
         this.screeningSeatRepository = screeningSeatRepository;
         this.screeningRepository = screeningRepository;
         this.screeningService = screeningService;
         this.userRepository = userRepository;
+        this.reservationExpirationService = reservationExpirationService;
     }
 
     @Transactional
     public List<ScreeningSeatResponse> findByScreening(Long screeningId, Authentication authentication) {
+        reservationExpirationService.expirePendingReservations();
         Screening screening = getScreening(screeningId);
         screeningService.initializeMissingSeats(screening);
         expireHolds(screeningSeatRepository.findByScreeningId(screeningId), LocalDateTime.now());
@@ -58,6 +62,7 @@ public class ScreeningSeatService {
 
     @Transactional
     public ScreeningSeatResponse hold(Long screeningId, Long screeningSeatId, Authentication authentication) {
+        reservationExpirationService.expirePendingReservations();
         User currentUser = currentUser(authentication);
         ScreeningSeat screeningSeat = screeningSeatRepository.findByIdAndScreeningIdForUpdate(screeningSeatId, screeningId)
                 .orElseThrow(() -> new ResourceNotFoundException("Screening seat not found"));
