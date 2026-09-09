@@ -34,6 +34,15 @@ public class ReservationExpirationService {
                 .forEach(this::expire);
     }
 
+    public boolean expireIfNeeded(Reservation reservation) {
+        if (reservation.getStatus() == ReservationStatus.PENDING_PAYMENT
+                && reservation.getExpiresAt().isBefore(LocalDateTime.now())) {
+            expire(reservation);
+            return true;
+        }
+        return false;
+    }
+
     private void expire(Reservation reservation) {
         reservation.setStatus(ReservationStatus.EXPIRED);
         reservation.setUpdatedAt(LocalDateTime.now());

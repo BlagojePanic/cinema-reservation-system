@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.cryptocinema.dto.ReservationRequest;
 import com.cryptocinema.dto.ReservationResponse;
+import com.cryptocinema.entity.PaymentStatus;
 import com.cryptocinema.entity.Reservation;
 import com.cryptocinema.entity.ReservationSeat;
 import com.cryptocinema.entity.ReservationStatus;
@@ -30,6 +31,7 @@ import com.cryptocinema.repository.ReservationSeatRepository;
 import com.cryptocinema.repository.ScreeningRepository;
 import com.cryptocinema.repository.ScreeningSeatRepository;
 import com.cryptocinema.repository.UserRepository;
+import com.cryptocinema.repository.PaymentRepository;
 
 @Service
 public class ReservationService {
@@ -38,6 +40,7 @@ public class ReservationService {
 
     private final ReservationRepository reservationRepository;
     private final ReservationSeatRepository reservationSeatRepository;
+    private final PaymentRepository paymentRepository;
     private final ScreeningRepository screeningRepository;
     private final ScreeningSeatRepository screeningSeatRepository;
     private final UserRepository userRepository;
@@ -46,6 +49,7 @@ public class ReservationService {
     public ReservationService(
             ReservationRepository reservationRepository,
             ReservationSeatRepository reservationSeatRepository,
+            PaymentRepository paymentRepository,
             ScreeningRepository screeningRepository,
             ScreeningSeatRepository screeningSeatRepository,
             UserRepository userRepository,
@@ -53,6 +57,7 @@ public class ReservationService {
     ) {
         this.reservationRepository = reservationRepository;
         this.reservationSeatRepository = reservationSeatRepository;
+        this.paymentRepository = paymentRepository;
         this.screeningRepository = screeningRepository;
         this.screeningSeatRepository = screeningSeatRepository;
         this.userRepository = userRepository;
@@ -226,7 +231,12 @@ public class ReservationService {
                 screening.getTicketPrice(),
                 reservation.getTotalAmount(),
                 reservation.getCreatedAt(),
-                reservation.getExpiresAt());
+                reservation.getExpiresAt(),
+                paymentRepository.findFirstByReservationIdAndStatusOrderByCreatedAtDesc(
+                                reservation.getId(),
+                                PaymentStatus.SUCCESS)
+                        .map(PaymentService::toResponse)
+                        .orElse(null));
     }
 
     private String label(Seat seat) {

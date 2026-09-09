@@ -12,8 +12,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.cryptocinema.dto.PaymentRequest;
+import com.cryptocinema.dto.PaymentResponse;
 import com.cryptocinema.dto.ReservationRequest;
 import com.cryptocinema.dto.ReservationResponse;
+import com.cryptocinema.service.PaymentService;
 import com.cryptocinema.service.ReservationService;
 
 @RestController
@@ -21,9 +24,11 @@ import com.cryptocinema.service.ReservationService;
 public class ReservationController {
 
     private final ReservationService reservationService;
+    private final PaymentService paymentService;
 
-    public ReservationController(ReservationService reservationService) {
+    public ReservationController(ReservationService reservationService, PaymentService paymentService) {
         this.reservationService = reservationService;
+        this.paymentService = paymentService;
     }
 
     @PostMapping
@@ -47,5 +52,19 @@ public class ReservationController {
     @PostMapping("/{id}/cancel")
     public ReservationResponse cancel(@PathVariable Long id, Authentication authentication) {
         return reservationService.cancel(id, authentication);
+    }
+
+    @PostMapping("/{id}/payment")
+    public PaymentResponse createPayment(
+            @PathVariable Long id,
+            @Valid @RequestBody PaymentRequest request,
+            Authentication authentication
+    ) {
+        return paymentService.create(id, request, authentication);
+    }
+
+    @GetMapping("/{id}/payments")
+    public List<PaymentResponse> findPayments(@PathVariable Long id, Authentication authentication) {
+        return paymentService.findForReservation(id, authentication);
     }
 }

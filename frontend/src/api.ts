@@ -83,6 +83,22 @@ export type ScreeningSeatResponse = {
 
 export type ReservationStatus = 'PENDING_PAYMENT' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED';
 
+export type PaymentMethod = 'CARD_SIMULATION' | 'CRYPTO';
+
+export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
+
+export type PaymentResponse = {
+  paymentId: number;
+  reservationId: number;
+  amount: number;
+  currency: string;
+  method: PaymentMethod;
+  status: PaymentStatus;
+  reference: string;
+  createdAt: string;
+  completedAt: string | null;
+};
+
 export type ReservationResponse = {
   reservationId: number;
   status: ReservationStatus;
@@ -96,6 +112,7 @@ export type ReservationResponse = {
   totalAmount: number;
   createdAt: string;
   expiresAt: string;
+  payment: PaymentResponse | null;
 };
 
 export type ApiError = {

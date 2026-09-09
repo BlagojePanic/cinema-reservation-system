@@ -247,6 +247,14 @@ h3 {
   color: #475569;
 }
 
+.payment-panel {
+  border-top: 1px solid #d8dee9;
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+}
+
 .movie-grid {
   display: grid;
   gap: 14px;
