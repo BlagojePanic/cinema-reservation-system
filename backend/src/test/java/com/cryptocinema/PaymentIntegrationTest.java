@@ -45,6 +45,7 @@ import com.cryptocinema.repository.ReservationSeatRepository;
 import com.cryptocinema.repository.ScreeningRepository;
 import com.cryptocinema.repository.ScreeningSeatRepository;
 import com.cryptocinema.repository.SeatRepository;
+import com.cryptocinema.repository.TicketRepository;
 import com.cryptocinema.repository.UserRepository;
 import com.cryptocinema.service.PaymentService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -74,6 +75,9 @@ class PaymentIntegrationTest {
 
     @Autowired
     private PaymentRepository paymentRepository;
+
+    @Autowired
+    private TicketRepository ticketRepository;
 
     @Autowired
     private ReservationRepository reservationRepository;
@@ -107,6 +111,7 @@ class PaymentIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        ticketRepository.deleteAll();
         paymentRepository.deleteAll();
         reservationSeatRepository.deleteAll();
         reservationRepository.deleteAll();

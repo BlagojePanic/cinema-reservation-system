@@ -267,6 +267,43 @@ h3 {
   padding: 10px;
 }
 
+.ticket-panel,
+.ticket-check-panel {
+  border: 1px solid #d8dee9;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.ticket-header {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.ticket-header div {
+  display: grid;
+  gap: 8px;
+}
+
+.ticket-qr {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  max-width: 220px;
+  width: 100%;
+}
+
+code {
+  background: #f1f5f9;
+  border-radius: 4px;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+  padding: 6px 8px;
+}
+
 .status-pill {
   border-radius: 6px;
   display: inline-flex;
@@ -284,14 +321,16 @@ h3 {
 }
 
 .reservation-status-confirmed,
-.payment-status-success {
+.payment-status-success,
+.ticket-status-valid {
   background: #dcfce7;
   color: #166534;
 }
 
 .reservation-status-cancelled,
 .reservation-status-expired,
-.payment-status-failed {
+.payment-status-failed,
+.ticket-status-used {
   background: #fee2e2;
   color: #991b1b;
 }
