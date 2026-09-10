@@ -12,6 +12,7 @@ public record MovieResponse(
         String director,
         LocalDate releaseDate,
         String posterUrl,
-        String trailerUrl
+        String trailerUrl,
+        String status
 ) {
 }

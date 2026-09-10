@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.cryptocinema.dto.MovieRequest;
 import com.cryptocinema.dto.MovieResponse;
@@ -32,6 +34,11 @@ public class MovieController {
         return movieService.findAll();
     }
 
+    @GetMapping("/api/admin/movies")
+    public List<MovieResponse> findAllForAdmin() {
+        return movieService.findAllForAdmin();
+    }
+
     @GetMapping("/api/movies/{id}")
     public MovieResponse findById(@PathVariable Long id) {
         return movieService.findById(id);
@@ -48,9 +55,24 @@ public class MovieController {
         return movieService.update(id, request);
     }
 
+    @PostMapping("/api/admin/movies/{id}/poster")
+    public MovieResponse uploadPoster(@PathVariable Long id, @RequestParam("file") MultipartFile file) {
+        return movieService.uploadPoster(id, file);
+    }
+
+    @PostMapping("/api/admin/movies/{id}/trailer")
+    public MovieResponse uploadTrailer(@PathVariable Long id, @RequestParam("file") MultipartFile file) {
+        return movieService.uploadTrailer(id, file);
+    }
+
     @DeleteMapping("/api/admin/movies/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         movieService.delete(id);
+    }
+
+    @PostMapping("/api/admin/movies/{id}/restore")
+    public MovieResponse restore(@PathVariable Long id) {
+        return movieService.restore(id);
     }
 }

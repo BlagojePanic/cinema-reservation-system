@@ -256,14 +256,14 @@ class ScreeningIntegrationTest {
     }
 
     @Test
-    void movieWithScreeningCannotBeDeleted() throws Exception {
+    void movieWithFutureScreeningCannotBeArchivedOrDeleted() throws Exception {
         TestData data = createTestData();
         createScreening(data.movieId(), data.hallId(), futureStart(20, 30));
 
         mockMvc.perform(delete("/api/admin/movies/{id}", data.movieId())
-                        .with(user("admin@example.com").roles("ADMIN")))
+                .with(user("admin@example.com").roles("ADMIN")))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value("Movie cannot be deleted while it has screenings"));
+                .andExpect(jsonPath("$.message").value("Movie cannot be archived while future screenings exist."));
     }
 
     @Test
