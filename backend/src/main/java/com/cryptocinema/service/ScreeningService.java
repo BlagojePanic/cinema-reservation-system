@@ -16,6 +16,7 @@ import com.cryptocinema.entity.Cinema;
 import com.cryptocinema.entity.City;
 import com.cryptocinema.entity.Hall;
 import com.cryptocinema.entity.Movie;
+import com.cryptocinema.entity.MovieStatus;
 import com.cryptocinema.entity.ReservationStatus;
 import com.cryptocinema.entity.Seat;
 import com.cryptocinema.entity.Screening;
@@ -227,8 +228,12 @@ public class ScreeningService {
     }
 
     private Movie getMovie(Long movieId) {
-        return movieRepository.findById(movieId)
+        Movie movie = movieRepository.findById(movieId)
                 .orElseThrow(() -> new ResourceNotFoundException("Movie not found"));
+        if (movie.getStatus() == MovieStatus.ARCHIVED) {
+            throw new ConflictException("Archived movie cannot receive new screenings.");
+        }
+        return movie;
     }
 
     private Hall getHall(Long hallId) {

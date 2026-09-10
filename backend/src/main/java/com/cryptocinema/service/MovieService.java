@@ -1,13 +1,16 @@
 package com.cryptocinema.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.cryptocinema.dto.MovieRequest;
 import com.cryptocinema.dto.MovieResponse;
 import com.cryptocinema.entity.Movie;
+import com.cryptocinema.entity.MovieStatus;
 import com.cryptocinema.exception.ConflictException;
 import com.cryptocinema.exception.ResourceNotFoundException;
 import com.cryptocinema.repository.MovieRepository;
@@ -18,14 +21,27 @@ public class MovieService {
 
     private final MovieRepository movieRepository;
     private final ScreeningRepository screeningRepository;
+    private final MediaStorageService mediaStorageService;
 
-    public MovieService(MovieRepository movieRepository, ScreeningRepository screeningRepository) {
+    public MovieService(
+            MovieRepository movieRepository,
+            ScreeningRepository screeningRepository,
+            MediaStorageService mediaStorageService
+    ) {
         this.movieRepository = movieRepository;
         this.screeningRepository = screeningRepository;
+        this.mediaStorageService = mediaStorageService;
     }
 
     @Transactional(readOnly = true)
     public List<MovieResponse> findAll() {
+        return movieRepository.findActiveMovies().stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<MovieResponse> findAllForAdmin() {
         return movieRepository.findAll().stream()
                 .map(this::toResponse)
                 .toList();
@@ -33,7 +49,11 @@ public class MovieService {
 
     @Transactional(readOnly = true)
     public MovieResponse findById(Long id) {
-        return toResponse(getMovie(id));
+        Movie movie = getMovie(id);
+        if (isArchived(movie)) {
+            throw new ResourceNotFoundException("Movie not found");
+        }
+        return toResponse(movie);
     }
 
     @Transactional
@@ -53,10 +73,35 @@ public class MovieService {
     @Transactional
     public void delete(Long id) {
         Movie movie = getMovie(id);
-        if (screeningRepository.existsByMovieId(id)) {
-            throw new ConflictException("Movie cannot be deleted while it has screenings");
+        if (screeningRepository.existsByMovieIdAndStartTimeGreaterThanEqual(id, LocalDateTime.now())) {
+            throw new ConflictException("Movie cannot be archived while future screenings exist.");
         }
-        movieRepository.delete(movie);
+        if (!screeningRepository.existsByMovieId(id)) {
+            movieRepository.delete(movie);
+            return;
+        }
+        movie.setStatus(MovieStatus.ARCHIVED);
+    }
+
+    @Transactional
+    public MovieResponse restore(Long id) {
+        Movie movie = getMovie(id);
+        movie.setStatus(MovieStatus.ACTIVE);
+        return toResponse(movie);
+    }
+
+    @Transactional
+    public MovieResponse uploadPoster(Long id, MultipartFile file) {
+        Movie movie = getMovie(id);
+        movie.setPosterUrl(mediaStorageService.storePoster(file));
+        return toResponse(movie);
+    }
+
+    @Transactional
+    public MovieResponse uploadTrailer(Long id, MultipartFile file) {
+        Movie movie = getMovie(id);
+        movie.setTrailerUrl(mediaStorageService.storeTrailer(file));
+        return toResponse(movie);
     }
 
     private Movie getMovie(Long id) {
@@ -74,6 +119,9 @@ public class MovieService {
         movie.setReleaseDate(request.releaseDate());
         movie.setPosterUrl(trimToNull(request.posterUrl()));
         movie.setTrailerUrl(trimToNull(request.trailerUrl()));
+        if (movie.getStatus() == null) {
+            movie.setStatus(MovieStatus.ACTIVE);
+        }
     }
 
     private String trimToNull(String value) {
@@ -94,6 +142,15 @@ public class MovieService {
                 movie.getDirector(),
                 movie.getReleaseDate(),
                 movie.getPosterUrl(),
-                movie.getTrailerUrl());
+                movie.getTrailerUrl(),
+                status(movie).name());
+    }
+
+    private boolean isArchived(Movie movie) {
+        return status(movie) == MovieStatus.ARCHIVED;
+    }
+
+    private MovieStatus status(Movie movie) {
+        return movie.getStatus() == null ? MovieStatus.ACTIVE : movie.getStatus();
     }
 }

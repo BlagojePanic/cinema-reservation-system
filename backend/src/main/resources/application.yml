@@ -13,6 +13,10 @@ spring:
     hibernate:
       ddl-auto: ${JPA_DDL_AUTO:update}
     open-in-view: false
+  servlet:
+    multipart:
+      max-file-size: ${MAX_UPLOAD_FILE_SIZE:100MB}
+      max-request-size: ${MAX_UPLOAD_FILE_SIZE:100MB}
 
 app:
   jwt:
@@ -27,3 +31,7 @@ app:
     web3-rpc-url: ${WEB3_RPC_URL:}
     network: Sepolia
     chain-id: 11155111
+  uploads:
+    root: ${UPLOAD_ROOT:uploads}
+    max-poster-bytes: ${MAX_POSTER_BYTES:5242880}
+    max-trailer-bytes: ${MAX_TRAILER_BYTES:104857600}
