@@ -41,6 +41,7 @@ public class PaymentService {
     private final UserRepository userRepository;
     private final ReservationExpirationService reservationExpirationService;
     private final CryptoTransactionVerifier cryptoTransactionVerifier;
+    private final TicketService ticketService;
     private final String merchantAddress;
     private final BigDecimal ethRsdRate;
     private final String cryptoNetwork;
@@ -52,6 +53,7 @@ public class PaymentService {
             UserRepository userRepository,
             ReservationExpirationService reservationExpirationService,
             CryptoTransactionVerifier cryptoTransactionVerifier,
+            TicketService ticketService,
             @Value("${app.crypto.merchant-address:}") String merchantAddress,
             @Value("${app.crypto.eth-rsd-rate:350000}") BigDecimal ethRsdRate,
             @Value("${app.crypto.network:Sepolia}") String cryptoNetwork,
@@ -62,6 +64,7 @@ public class PaymentService {
         this.userRepository = userRepository;
         this.reservationExpirationService = reservationExpirationService;
         this.cryptoTransactionVerifier = cryptoTransactionVerifier;
+        this.ticketService = ticketService;
         this.merchantAddress = merchantAddress;
         this.ethRsdRate = ethRsdRate;
         this.cryptoNetwork = cryptoNetwork;
@@ -111,7 +114,11 @@ public class PaymentService {
             reservation.setUpdatedAt(now);
         }
 
-        return toResponse(paymentRepository.save(payment));
+        Payment savedPayment = paymentRepository.save(payment);
+        if (savedPayment.getStatus() == PaymentStatus.SUCCESS) {
+            ticketService.createTicketIfEligible(reservation);
+        }
+        return toResponse(savedPayment);
     }
 
     @Transactional(noRollbackFor = ConflictException.class)
@@ -190,7 +197,9 @@ public class PaymentService {
         payment.setCompletedAt(now);
         reservation.setStatus(ReservationStatus.CONFIRMED);
         reservation.setUpdatedAt(now);
-        return toResponse(paymentRepository.save(payment));
+        Payment savedPayment = paymentRepository.save(payment);
+        ticketService.createTicketIfEligible(reservation);
+        return toResponse(savedPayment);
     }
 
     @Transactional

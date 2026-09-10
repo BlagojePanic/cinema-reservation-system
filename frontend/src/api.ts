@@ -87,6 +87,8 @@ export type PaymentMethod = 'CARD_SIMULATION' | 'CRYPTO';
 
 export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
 
+export type TicketStatus = 'VALID' | 'USED';
+
 export type PaymentResponse = {
   paymentId: number;
   reservationId: number;
@@ -154,6 +156,31 @@ export type AdminReservationResponse = {
   latestPaymentTransactionHash: string | null;
 };
 
+export type TicketResponse = {
+  ticketCode: string;
+  ticketStatus: TicketStatus;
+  movieTitle: string;
+  cinemaName: string;
+  hallName: string;
+  screeningStartTime: string;
+  seats: string[];
+  totalAmount: number;
+  reservationId: number;
+  createdAt: string;
+  usedAt: string | null;
+};
+
+export type AdminTicketResponse = TicketResponse & {
+  reservationStatus: ReservationStatus;
+  userEmail: string;
+};
+
+export type TicketValidationResponse = {
+  accepted: boolean;
+  message: string;
+  ticket: AdminTicketResponse;
+};
+
 export type ApiError = {
   message: string;
   status?: number;
@@ -209,4 +236,28 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   }
 
   return JSON.parse(text) as T;
+}
+
+export async function apiBlob(path: string): Promise<Blob> {
+  const headers = new Headers();
+  const token = getToken();
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(path, { headers });
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const body = (await response.json()) as { message?: string };
+      message = body.message ?? message;
+    } catch {
+      // Keep the default message when the response has no JSON body.
+    }
+    throw { message, status: response.status } satisfies ApiError;
+  }
+
+  return response.blob();
 }

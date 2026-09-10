@@ -1,7 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react';
 import {
+  apiBlob,
   apiRequest,
   AdminReservationResponse,
+  AdminTicketResponse,
   AuthResponse,
   CinemaResponse,
   CityResponse,
@@ -16,6 +18,8 @@ import {
   ScreeningResponse,
   ScreeningSeatResponse,
   SeatResponse,
+  TicketResponse,
+  TicketValidationResponse,
   UserResponse,
 } from './api';
 
@@ -190,6 +194,9 @@ function App() {
             )}
             {currentUser?.role === 'ADMIN' && (
               <AdminReservationPanel refreshKey={reservationRefreshKey} />
+            )}
+            {currentUser?.role === 'ADMIN' && (
+              <AdminTicketValidationPanel />
             )}
             {currentUser?.role === 'ADMIN' && (
               <AdminMoviePanel
@@ -817,6 +824,8 @@ function MyReservations({
   const [paymentsByReservation, setPaymentsByReservation] = useState<Record<number, PaymentResponse[]>>({});
   const [payingReservationId, setPayingReservationId] = useState<number | null>(null);
   const [cryptoStates, setCryptoStates] = useState<Record<number, CryptoUiState>>({});
+  const [selectedTicket, setSelectedTicket] = useState<TicketResponse | null>(null);
+  const [ticketQrUrl, setTicketQrUrl] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -1046,6 +1055,26 @@ function MyReservations({
     }));
   }
 
+  async function viewTicket(reservationId: number) {
+    setError('');
+    setMessage('');
+    try {
+      const [ticket, qrBlob] = await Promise.all([
+        apiRequest<TicketResponse>(`/api/reservations/${reservationId}/ticket`),
+        apiBlob(`/api/reservations/${reservationId}/ticket/qr`),
+      ]);
+      setSelectedTicket(ticket);
+      setTicketQrUrl(await blobToDataUrl(qrBlob));
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  function closeTicket() {
+    setSelectedTicket(null);
+    setTicketQrUrl('');
+  }
+
   return (
     <section className="data-section">
       <h2>My Reservations</h2>
@@ -1072,6 +1101,11 @@ function MyReservations({
                     <span>Payment: {latestPayment.status}</span>
                     <span>Method: {latestPayment.method}</span>
                   </>
+                )}
+                {reservation.status === 'CONFIRMED' && (
+                  <button type="button" onClick={() => viewTicket(reservation.reservationId)}>
+                    View ticket
+                  </button>
                 )}
                 {reservation.status === 'PENDING_PAYMENT' && (
                   <div className="payment-panel">
@@ -1152,7 +1186,45 @@ function MyReservations({
       </div>
       {message && <p className="status-message">{message}</p>}
       {error && <p className="error-message">{error}</p>}
+      {selectedTicket && (
+        <TicketView ticket={selectedTicket} qrUrl={ticketQrUrl} onClose={closeTicket} />
+      )}
     </section>
+  );
+}
+
+function TicketView({
+  ticket,
+  qrUrl,
+  onClose,
+}: {
+  ticket: TicketResponse;
+  qrUrl: string;
+  onClose: () => void;
+}) {
+  return (
+    <article className="ticket-panel">
+      <div className="ticket-header">
+        <div>
+          <h3>{ticket.movieTitle}</h3>
+          <span className={`status-pill ticket-status-${ticket.ticketStatus.toLowerCase()}`}>
+            Ticket: {ticket.ticketStatus}
+          </span>
+        </div>
+        <button type="button" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      {qrUrl && <img className="ticket-qr" src={qrUrl} alt="Ticket QR code" />}
+      <code>{ticket.ticketCode}</code>
+      <span>{formatDateTime(ticket.screeningStartTime)}</span>
+      <span>{ticket.cinemaName} - {ticket.hallName}</span>
+      <span>Seats: {ticket.seats.join(', ')}</span>
+      <span>Total: {ticket.totalAmount} RSD</span>
+      <span>Reservation: #{ticket.reservationId}</span>
+      <span>Created: {formatDateTime(ticket.createdAt)}</span>
+      {ticket.usedAt && <span>Used: {formatDateTime(ticket.usedAt)}</span>}
+    </article>
   );
 }
 
@@ -1205,6 +1277,91 @@ function AdminReservationPanel({ refreshKey }: { refreshKey: number }) {
           ))
         )}
       </div>
+      {error && <p className="error-message">{error}</p>}
+    </section>
+  );
+}
+
+function AdminTicketValidationPanel() {
+  const [ticket, setTicket] = useState<AdminTicketResponse | null>(null);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  async function checkTicket(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const ticketCode = String(form.get('ticketCode') ?? '').trim();
+    if (!ticketCode) {
+      return;
+    }
+
+    try {
+      const response = await apiRequest<AdminTicketResponse>(
+        `/api/admin/tickets/${encodeURIComponent(ticketCode)}`,
+      );
+      setTicket(response);
+      setMessage('');
+      setError('');
+    } catch (err) {
+      setTicket(null);
+      setMessage('');
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function validateEntry() {
+    if (!ticket) {
+      return;
+    }
+
+    try {
+      const response = await apiRequest<TicketValidationResponse>(
+        `/api/admin/tickets/${encodeURIComponent(ticket.ticketCode)}/validate`,
+        { method: 'POST' },
+      );
+      setTicket(response.ticket);
+      setMessage(response.message);
+      setError('');
+    } catch (err) {
+      setMessage('');
+      setError(getErrorMessage(err));
+    }
+  }
+
+  return (
+    <section className="data-section">
+      <h2>Ticket Validation</h2>
+      <form className="form-grid" onSubmit={checkTicket}>
+        <label>
+          Ticket code
+          <input name="ticketCode" required />
+        </label>
+        <button type="submit">Check ticket</button>
+      </form>
+      {ticket && (
+        <article className="ticket-check-panel">
+          <strong>{ticket.movieTitle}</strong>
+          <span className={`status-pill ticket-status-${ticket.ticketStatus.toLowerCase()}`}>
+            Ticket: {ticket.ticketStatus}
+          </span>
+          <span className={`status-pill reservation-status-${ticket.reservationStatus.toLowerCase()}`}>
+            Reservation: {ticket.reservationStatus}
+          </span>
+          <span>User: {ticket.userEmail}</span>
+          <span>{formatDateTime(ticket.screeningStartTime)}</span>
+          <span>{ticket.cinemaName} - {ticket.hallName}</span>
+          <span>Seats: {ticket.seats.join(', ')}</span>
+          <span>Reservation: #{ticket.reservationId}</span>
+          <code>{ticket.ticketCode}</code>
+          {ticket.usedAt && <span>Used: {formatDateTime(ticket.usedAt)}</span>}
+          {ticket.ticketStatus === 'VALID' && ticket.reservationStatus === 'CONFIRMED' && (
+            <button type="button" onClick={validateEntry}>
+              Validate entry
+            </button>
+          )}
+        </article>
+      )}
+      {message && <p className="status-message">{message}</p>}
       {error && <p className="error-message">{error}</p>}
     </section>
   );
@@ -1936,6 +2093,15 @@ function shortAddress(value: string) {
     return value;
   }
   return `${value.slice(0, 8)}...${value.slice(-6)}`;
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 function getErrorMessage(error: unknown) {
