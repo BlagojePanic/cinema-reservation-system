@@ -224,6 +224,7 @@ export function AdminMoviesPage({ onNavigate }: AdminProps) {
         <AppModal
           title="Archive movie?"
           onClose={() => !busyMovieId && setPendingArchiveMovie(null)}
+          showClose={false}
           footer={(
             <>
               <button type="button" onClick={() => setPendingArchiveMovie(null)} disabled={busyMovieId === pendingArchiveMovie.id}>Cancel</button>

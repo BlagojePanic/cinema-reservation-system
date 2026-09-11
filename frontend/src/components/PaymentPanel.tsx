@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { apiRequest, CryptoPaymentPrepareResponse, PaymentResponse } from '../api';
+import { FormEvent, useState } from 'react';
+import { apiRequest, CryptoPaymentPrepareResponse, PaymentResponse, ReservationResponse } from '../api';
 import { decimalEthToWeiHex, getErrorMessage, shortAddress } from '../utils/format';
+import { AppModal } from './AppModal';
 
 type CryptoUiStatus = 'READY' | 'WALLET_CONNECTED' | 'TRANSACTION_SENT' | 'WAITING_CONFIRMATION' | 'SUCCESS' | 'FAILED';
 
@@ -23,27 +24,73 @@ declare global {
 }
 
 type PaymentPanelProps = {
-  reservationId: number;
+  reservation: ReservationResponse;
   onChanged: () => void;
 };
 
-export function PaymentPanel({ reservationId, onChanged }: PaymentPanelProps) {
+type PaymentStep = 'METHOD' | 'CARD' | 'METAMASK';
+
+export function PaymentPanel({ reservation, onChanged }: PaymentPanelProps) {
+  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<PaymentStep>('METHOD');
+  const [form, setForm] = useState({ pan: '', holder: '', validUntil: '', securityCode: '' });
+  const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
   const [cryptoState, setCryptoState] = useState<CryptoUiState | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  async function payCard(simulateSuccess: boolean) {
+  function closeModal() {
+    if (busy) return;
+    setOpen(false);
+    setStep('METHOD');
+    setForm({ pan: '', holder: '', validUntil: '', securityCode: '' });
+    setFormError('');
+    setCryptoState(null);
+    setMessage('');
+    setError('');
+  }
+
+  async function payCard(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError('');
+    const digits = form.pan.replace(/\D/g, '');
+    const validUntil = form.validUntil.trim();
+    const holder = form.holder.trim();
+    const securityCode = form.securityCode.trim();
+
+    if (digits.length !== 16) {
+      setFormError('Card number must contain 16 digits.');
+      return;
+    }
+    if (!holder) {
+      setFormError('Cardholder name is required.');
+      return;
+    }
+    if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(validUntil)) {
+      setFormError('Expiry date must use MM/YY format.');
+      return;
+    }
+    if (!/^\d{3}$/.test(securityCode)) {
+      setFormError('CVV must contain 3 digits.');
+      return;
+    }
+
     setBusy(true);
     setError('');
     setMessage('');
     try {
-      const payment = await apiRequest<PaymentResponse>(`/api/reservations/${reservationId}/payment`, {
+      const payment = await apiRequest<PaymentResponse>(`/api/reservations/${reservation.reservationId}/payment`, {
         method: 'POST',
-        body: JSON.stringify({ method: 'CARD_SIMULATION', simulateSuccess }),
+        body: JSON.stringify({ method: 'CARD_SIMULATION', simulateSuccess: true }),
       });
       setMessage(payment.status === 'SUCCESS' ? 'Payment successful.' : 'Payment failed. You can try again.');
       onChanged();
+      if (payment.status === 'SUCCESS') {
+        setOpen(false);
+        setStep('METHOD');
+        setForm({ pan: '', holder: '', validUntil: '', securityCode: '' });
+      }
     } catch (err) {
       setError(getErrorMessage(err));
       onChanged();
@@ -78,7 +125,7 @@ export function PaymentPanel({ reservationId, onChanged }: PaymentPanelProps) {
       }
 
       const prepare = await apiRequest<CryptoPaymentPrepareResponse>(
-        `/api/reservations/${reservationId}/crypto-payment/prepare`,
+        `/api/reservations/${reservation.reservationId}/crypto-payment/prepare`,
         { method: 'POST' },
       );
       setCryptoState({
@@ -124,7 +171,7 @@ export function PaymentPanel({ reservationId, onChanged }: PaymentPanelProps) {
     setError('');
     try {
       const payment = await apiRequest<PaymentResponse>(
-        `/api/reservations/${reservationId}/crypto-payment/confirm`,
+        `/api/reservations/${reservation.reservationId}/crypto-payment/confirm`,
         {
           method: 'POST',
           body: JSON.stringify({
@@ -143,6 +190,11 @@ export function PaymentPanel({ reservationId, onChanged }: PaymentPanelProps) {
       });
       setMessage(payment.status === 'SUCCESS' ? 'Payment successful.' : '');
       onChanged();
+      if (payment.status === 'SUCCESS') {
+        setOpen(false);
+        setStep('METHOD');
+        setCryptoState(null);
+      }
     } catch (err) {
       setError(getErrorMessage(err));
       setCryptoState({ ...state, status: 'FAILED', message: getErrorMessage(err) });
@@ -153,47 +205,130 @@ export function PaymentPanel({ reservationId, onChanged }: PaymentPanelProps) {
   }
 
   return (
-    <div className="payment-methods">
-      <section className="payment-method">
-        <h3>Card Simulation</h3>
-        <p>Use this testing method to simulate card authorization.</p>
-        <div className="actions">
-          <button type="button" onClick={() => payCard(true)} disabled={busy}>Simulate SUCCESS</button>
-          <button type="button" onClick={() => payCard(false)} disabled={busy}>Simulate FAILURE</button>
-        </div>
-      </section>
+    <>
+      <button className="accent-button" type="button" onClick={() => setOpen(true)}>Buy ticket</button>
+      {open && (
+        <AppModal
+          title={step === 'METHOD' ? 'Choose payment method' : step === 'CARD' ? 'Card checkout' : 'MetaMask checkout'}
+          onClose={closeModal}
+          showClose={step !== 'METHOD'}
+        >
+          {step === 'METHOD' && (
+            <>
+              <PaymentSummary reservation={reservation} />
+              <div className="payment-choice-grid">
+                <button className="payment-choice" type="button" onClick={() => setStep('CARD')} disabled={busy}>
+                  <span aria-hidden="true">💳</span>
+                  <strong>Card</strong>
+                  <small>Secure-looking checkout simulation.</small>
+                </button>
+                <button className="payment-choice" type="button" onClick={() => setStep('METAMASK')} disabled={busy}>
+                  <span aria-hidden="true">🦊</span>
+                  <strong>MetaMask</strong>
+                  <small>Sepolia ETH with backend verification.</small>
+                </button>
+              </div>
+              <div className="modal-footer-inline"><button type="button" onClick={closeModal} disabled={busy}>Cancel</button></div>
+            </>
+          )}
 
-      <section className="payment-method">
-        <h3>Crypto / MetaMask</h3>
-        <p>Sepolia ETH testnet payment with backend transaction verification.</p>
-        <button type="button" onClick={payWithMetaMask} disabled={busy}>Connect MetaMask</button>
-        {cryptoState && (
-          <div className="crypto-status">
-            <span>Status: {cryptoState.status}</span>
-            <span>{cryptoState.message}</span>
-            {cryptoState.walletAddress && <span>Wallet: {shortAddress(cryptoState.walletAddress)}</span>}
-            {cryptoState.prepare && (
-              <>
-                <span>Network: {cryptoState.prepare.network}</span>
-                <span>Amount RSD: {cryptoState.prepare.amountRsd}</span>
-                <span>Amount ETH: {cryptoState.prepare.cryptoAmount}</span>
-                <span>Merchant: {shortAddress(cryptoState.prepare.merchantAddress)}</span>
-              </>
-            )}
-            {cryptoState.transactionHash && (
-              <a href={`https://sepolia.etherscan.io/tx/${cryptoState.transactionHash}`} target="_blank" rel="noreferrer">
-                Sepolia transaction
-              </a>
-            )}
-            {cryptoState.transactionHash && cryptoState.status === 'WAITING_CONFIRMATION' && (
-              <button type="button" onClick={() => confirmCrypto()} disabled={busy}>Verify transaction</button>
-            )}
-          </div>
-        )}
-      </section>
+          {step === 'CARD' && (
+            <form className="checkout-form" onSubmit={payCard}>
+              <PaymentSummary reservation={reservation} />
+              <label>Card number
+                <input
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={form.pan}
+                  onChange={(event) => setForm((current) => ({ ...current, pan: event.target.value }))}
+                  placeholder="1234 5678 9012 3456"
+                />
+              </label>
+              <label>Cardholder name
+                <input
+                  autoComplete="off"
+                  value={form.holder}
+                  onChange={(event) => setForm((current) => ({ ...current, holder: event.target.value }))}
+                  placeholder="Alex Example"
+                />
+              </label>
+              <div className="checkout-two-column">
+                <label>Expiry date
+                  <input
+                    autoComplete="off"
+                    value={form.validUntil}
+                    onChange={(event) => setForm((current) => ({ ...current, validUntil: event.target.value }))}
+                    placeholder="MM/YY"
+                  />
+                </label>
+                <label>CVV
+                  <input
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={form.securityCode}
+                    onChange={(event) => setForm((current) => ({ ...current, securityCode: event.target.value }))}
+                    placeholder="123"
+                  />
+                </label>
+              </div>
+              {formError && <p className="error-message">{formError}</p>}
+              {error && <p className="error-message">{error}</p>}
+              <div className="actions">
+                <button type="button" onClick={() => setStep('METHOD')} disabled={busy}>Back</button>
+                <button className="accent-button" type="submit" disabled={busy}>Pay {reservation.totalAmount} RSD</button>
+              </div>
+            </form>
+          )}
 
-      {message && <p className="status-message">{message}</p>}
-      {error && <p className="error-message">{error}</p>}
+          {step === 'METAMASK' && (
+            <div className="metamask-panel">
+              <PaymentSummary reservation={reservation} />
+              <div className="crypto-status">
+                <span>Network: Sepolia</span>
+                {cryptoState?.walletAddress ? <span>Connected wallet: {shortAddress(cryptoState.walletAddress)}</span> : <span>Connected wallet: Not connected</span>}
+                {cryptoState?.prepare ? (
+                  <>
+                    <span>Amount in ETH: {cryptoState.prepare.cryptoAmount}</span>
+                    <span>Approximate RSD amount: {cryptoState.prepare.amountRsd}</span>
+                    <span>Merchant: {shortAddress(cryptoState.prepare.merchantAddress)}</span>
+                  </>
+                ) : (
+                  <span>Approximate RSD amount: {reservation.totalAmount}</span>
+                )}
+                {cryptoState && <span>Status: {cryptoState.status}</span>}
+                {cryptoState && <span>{cryptoState.message}</span>}
+                {cryptoState?.transactionHash && (
+                  <a href={`https://sepolia.etherscan.io/tx/${cryptoState.transactionHash}`} target="_blank" rel="noreferrer">
+                    Sepolia transaction
+                  </a>
+                )}
+              </div>
+              {message && <p className="status-message">{message}</p>}
+              {error && <p className="error-message">{error}</p>}
+              <div className="actions">
+                <button type="button" onClick={() => setStep('METHOD')} disabled={busy}>Back</button>
+                {cryptoState?.transactionHash && cryptoState.status === 'WAITING_CONFIRMATION' ? (
+                  <button className="accent-button" type="button" onClick={() => confirmCrypto()} disabled={busy}>Verify transaction</button>
+                ) : (
+                  <button className="accent-button" type="button" onClick={payWithMetaMask} disabled={busy}>
+                    {cryptoState?.walletAddress ? 'Send with MetaMask' : 'Connect MetaMask'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </AppModal>
+      )}
+    </>
+  );
+}
+
+function PaymentSummary({ reservation }: { reservation: ReservationResponse }) {
+  return (
+    <div className="checkout-summary compact-summary">
+      <span>Movie: {reservation.movieTitle}</span>
+      <span>Seats: {reservation.seatLabels.join(', ')}</span>
+      <strong>Total: {reservation.totalAmount} RSD</strong>
     </div>
   );
 }

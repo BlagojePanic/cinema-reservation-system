@@ -9,7 +9,7 @@ import {
 } from '../api';
 import { MovieCard, Poster } from '../components/MovieCard';
 import { SeatMap } from '../components/SeatMap';
-import { formatDate, formatDateTime, formatTime, getErrorMessage } from '../utils/format';
+import { formatDate, formatTime, getErrorMessage } from '../utils/format';
 
 export function MoviesPage({ onNavigate }: { onNavigate: (path: string) => void }) {
   const [movies, setMovies] = useState<MovieResponse[]>([]);
@@ -204,7 +204,7 @@ export function RepertoirePage({ onNavigate }: { onNavigate: (path: string) => v
         </select></label>
       </div>
       {loading && <p className="page-message">Loading screenings...</p>}
-      {!loading && <ScreeningCards screenings={screenings} onNavigate={onNavigate} emptyMessage="No screenings match the selected filters." />}
+      {!loading && <ScreeningCards screenings={screenings} onNavigate={onNavigate} emptyMessage="No screenings match the selected filters." showMovieTitle />}
       {error && <p className="error-message">{error}</p>}
     </main>
   );
@@ -247,28 +247,68 @@ function ScreeningCards({
   screenings,
   onNavigate,
   emptyMessage,
+  showMovieTitle = false,
 }: {
   screenings: ScreeningResponse[];
   onNavigate: (path: string) => void;
   emptyMessage: string;
+  showMovieTitle?: boolean;
 }) {
+  const groups = screenings.reduce<ScreeningGroup[]>((acc, screening) => {
+    const date = screening.startTime.slice(0, 10);
+    const key = `${date}-${screening.cinemaId}`;
+    const existing = acc.find((group) => group.key === key);
+    if (existing) {
+      existing.screenings.push(screening);
+      return acc;
+    }
+    acc.push({
+      key,
+      cityName: screening.cityName,
+      cinemaName: screening.cinemaName,
+      date,
+      screenings: [screening],
+    });
+    return acc;
+  }, []);
+
   return (
     <div className="screening-list">
       {screenings.length === 0 ? (
         <p className="empty-state">{emptyMessage}</p>
       ) : (
-        screenings.map((screening) => (
-          <article className="screening-card" key={screening.id}>
-            <strong>{screening.movieTitle}</strong>
-            <span>{formatDateTime(screening.startTime)} ({formatTime(screening.startTime)})</span>
-            <span>{screening.cityName} | {screening.cinemaName} | {screening.hallName}</span>
-            <span>{screening.ticketPrice} RSD</span>
-            <button type="button" onClick={() => onNavigate(`/screenings/${screening.id}/seats`)}>
-              Select seats
-            </button>
-          </article>
+        groups.map((group) => (
+          <section className="screening-group" key={group.key}>
+            <div className="screening-group-heading">
+              <div>
+                <p className="eyebrow">{group.cityName}</p>
+                <h3>{group.cinemaName}</h3>
+              </div>
+              <strong>{formatDate(group.date)}</strong>
+            </div>
+            <div className="screening-time-grid">
+              {group.screenings
+                .sort((first, second) => new Date(first.startTime).getTime() - new Date(second.startTime).getTime())
+                .map((screening) => (
+                  <button className="screening-time-card" type="button" key={screening.id} onClick={() => onNavigate(`/screenings/${screening.id}/seats`)}>
+                    {showMovieTitle && <span>{screening.movieTitle}</span>}
+                    <strong>{formatTime(screening.startTime)}</strong>
+                    <span>{screening.hallName}</span>
+                    <small>{screening.ticketPrice} RSD</small>
+                  </button>
+                ))}
+            </div>
+          </section>
         ))
       )}
     </div>
   );
 }
+
+type ScreeningGroup = {
+  key: string;
+  cityName: string;
+  cinemaName: string;
+  date: string;
+  screenings: ScreeningResponse[];
+};

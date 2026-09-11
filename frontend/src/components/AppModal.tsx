@@ -6,9 +6,10 @@ type AppModalProps = {
   onClose: () => void;
   footer?: ReactNode;
   size?: 'default' | 'wide';
+  showClose?: boolean;
 };
 
-export function AppModal({ title, children, onClose, footer, size = 'default' }: AppModalProps) {
+export function AppModal({ title, children, onClose, footer, size = 'default', showClose = true }: AppModalProps) {
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
@@ -31,7 +32,7 @@ export function AppModal({ title, children, onClose, footer, size = 'default' }:
       >
         <div className="modal-heading">
           <h2 id="app-modal-title">{title}</h2>
-          <button className="modal-close" type="button" onClick={onClose}>Close</button>
+          {showClose && <button className="modal-close" type="button" onClick={onClose}>Close</button>}
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
