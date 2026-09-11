@@ -11,13 +11,18 @@ import {
   SeatResponse,
   TicketValidationResponse,
 } from '../api';
+import { AppModal } from '../components/AppModal';
 import { Poster } from '../components/MovieCard';
+import { SeatLayout } from '../components/SeatLayout';
 import { StatusBadge } from '../components/StatusBadge';
 import { formatDateTime, getErrorMessage, optionalFormValue, shortAddress } from '../utils/format';
 
 type AdminProps = {
   onNavigate: (path: string) => void;
 };
+
+type MovieFilter = 'ALL' | 'ACTIVE' | 'ARCHIVED';
+type ScreeningFilter = 'UPCOMING' | 'PAST' | 'ALL';
 
 export function AdminDashboardPage({ onNavigate }: AdminProps) {
   const [counts, setCounts] = useState({ movies: 0, cinemas: 0, screenings: 0, reservations: 0 });
@@ -52,13 +57,16 @@ export function AdminDashboardPage({ onNavigate }: AdminProps) {
 
 export function AdminMoviesPage({ onNavigate }: AdminProps) {
   const [movies, setMovies] = useState<MovieResponse[]>([]);
+  const [movieFilter, setMovieFilter] = useState<MovieFilter>('ACTIVE');
   const [editingId, setEditingId] = useState('');
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [trailerFile, setTrailerFile] = useState<File | null>(null);
   const [busyMovieId, setBusyMovieId] = useState<number | null>(null);
+  const [pendingArchiveMovie, setPendingArchiveMovie] = useState<MovieResponse | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const editingMovie = movies.find((movie) => movie.id === Number(editingId));
+  const filteredMovies = movies.filter((movie) => movieFilter === 'ALL' || movie.status === movieFilter);
 
   useEffect(() => {
     refreshMovies();
@@ -112,16 +120,14 @@ export function AdminMoviesPage({ onNavigate }: AdminProps) {
     });
   }
 
-  async function deleteMovie(movieId: number) {
-    const movie = movies.find((item) => item.id === movieId);
-    if (!window.confirm(`Are you sure you want to remove ${movie?.title ?? 'this movie'} from the active catalogue?`)) {
-      return;
-    }
-    setBusyMovieId(movieId);
+  async function archiveMovie() {
+    if (!pendingArchiveMovie) return;
+    setBusyMovieId(pendingArchiveMovie.id);
     try {
-      await apiRequest(`/api/admin/movies/${movieId}`, { method: 'DELETE' });
+      await apiRequest(`/api/admin/movies/${pendingArchiveMovie.id}`, { method: 'DELETE' });
       setEditingId('');
       setMessage('Movie removed from the active catalogue.');
+      setPendingArchiveMovie(null);
       await refreshMovies();
     } catch (err) {
       setError(getErrorMessage(err));
@@ -169,7 +175,7 @@ export function AdminMoviesPage({ onNavigate }: AdminProps) {
           <div className="actions">
             <button type="submit">{editingMovie ? 'Update movie' : 'Add movie'}</button>
             {editingMovie && editingMovie.status === 'ACTIVE' && (
-              <button type="button" onClick={() => deleteMovie(editingMovie.id)} disabled={busyMovieId === editingMovie.id}>
+              <button className="danger-button" type="button" onClick={() => setPendingArchiveMovie(editingMovie)} disabled={busyMovieId === editingMovie.id}>
                 Archive movie
               </button>
             )}
@@ -182,9 +188,22 @@ export function AdminMoviesPage({ onNavigate }: AdminProps) {
           {message && <p className="status-message">{message}</p>}
           {error && <p className="error-message">{error}</p>}
         </form>
-        <div className="admin-list">
-          {movies.map((movie) => (
-            <article className="admin-list-item" key={movie.id}>
+        <section className="admin-list-panel">
+          <div className="segmented-control" aria-label="Movie status filter">
+            {(['ACTIVE', 'ARCHIVED', 'ALL'] as MovieFilter[]).map((filter) => (
+              <button
+                className={movieFilter === filter ? 'selected' : ''}
+                key={filter}
+                type="button"
+                onClick={() => setMovieFilter(filter)}
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
+          <div className="admin-list scroll-list">
+          {filteredMovies.length === 0 ? <p className="empty-state">No movies match this filter.</p> : filteredMovies.map((movie) => (
+            <article className={`admin-list-item ${movie.status === 'ARCHIVED' ? 'archived-item' : ''}`} key={movie.id}>
               <div className="mini-poster"><Poster movie={movie} /></div>
               <strong>{movie.title}</strong>
               <StatusBadge status={movie.status} />
@@ -198,8 +217,26 @@ export function AdminMoviesPage({ onNavigate }: AdminProps) {
               {movie.trailerUrl && <video className="admin-video" src={movie.trailerUrl} controls />}
             </article>
           ))}
-        </div>
+          </div>
+        </section>
       </div>
+      {pendingArchiveMovie && (
+        <AppModal
+          title="Archive movie?"
+          onClose={() => !busyMovieId && setPendingArchiveMovie(null)}
+          footer={(
+            <>
+              <button type="button" onClick={() => setPendingArchiveMovie(null)} disabled={busyMovieId === pendingArchiveMovie.id}>Cancel</button>
+              <button className="danger-button" type="button" onClick={archiveMovie} disabled={busyMovieId === pendingArchiveMovie.id}>
+                Archive movie
+              </button>
+            </>
+          )}
+        >
+          <p>Are you sure you want to remove "{pendingArchiveMovie.title}" from the active catalogue?</p>
+          {error && <p className="error-message">{error}</p>}
+        </AppModal>
+      )}
     </AdminLayout>
   );
 }
@@ -210,7 +247,15 @@ export function AdminStructurePage({ onNavigate }: AdminProps) {
   const [halls, setHalls] = useState<HallResponse[]>([]);
   const [seats, setSeats] = useState<SeatResponse[]>([]);
   const [selectedHallId, setSelectedHallId] = useState('');
+  const [seatPreviewOpen, setSeatPreviewOpen] = useState(false);
   const [error, setError] = useState('');
+  const selectedHall = halls.find((hall) => hall.id === Number(selectedHallId));
+  const rowCount = new Set(seats.map((seat) => seat.rowLabel)).size;
+  const previewSeats = seats.map((seat) => ({
+    id: seat.id,
+    rowLabel: seat.rowLabel,
+    seatNumber: seat.seatNumber,
+  }));
 
   useEffect(() => {
     refresh();
@@ -298,8 +343,22 @@ export function AdminStructurePage({ onNavigate }: AdminProps) {
         <label>Hall<select value={selectedHallId} onChange={(event) => setSelectedHallId(event.target.value)}>
           <option value="">Select hall</option>{halls.map((hall) => <option key={hall.id} value={hall.id}>{hall.cinemaName} | {hall.name}</option>)}
         </select></label>
-        <div className="seat-grid">{seats.map((seat) => <span key={seat.id}>{seat.rowLabel}{seat.seatNumber}</span>)}</div>
+        <button type="button" onClick={() => setSeatPreviewOpen(true)} disabled={!selectedHallId || seats.length === 0}>
+          Preview seat layout
+        </button>
+        {selectedHallId && seats.length === 0 && <p className="empty-state">No seats have been generated for this hall.</p>}
       </section>
+      {seatPreviewOpen && selectedHall && (
+        <AppModal title="Seat layout" size="wide" onClose={() => setSeatPreviewOpen(false)}>
+          <div className="seat-preview-summary">
+            <strong>{selectedHall.cinemaName}</strong>
+            <span>{selectedHall.name}</span>
+            <span>{rowCount} rows</span>
+            <span>{seats.length} seats total</span>
+          </div>
+          <SeatLayout seats={previewSeats} neutral />
+        </AppModal>
+      )}
       {error && <p className="error-message">{error}</p>}
     </AdminLayout>
   );
@@ -310,10 +369,17 @@ export function AdminScreeningsPage({ onNavigate }: AdminProps) {
   const [cinemas, setCinemas] = useState<CinemaResponse[]>([]);
   const [halls, setHalls] = useState<HallResponse[]>([]);
   const [screenings, setScreenings] = useState<ScreeningResponse[]>([]);
+  const [screeningFilter, setScreeningFilter] = useState<ScreeningFilter>('UPCOMING');
   const [editingId, setEditingId] = useState('');
   const [busyScreeningId, setBusyScreeningId] = useState<number | null>(null);
+  const [pendingDeleteScreening, setPendingDeleteScreening] = useState<ScreeningResponse | null>(null);
   const [error, setError] = useState('');
   const editing = screenings.find((screening) => screening.id === Number(editingId));
+  const filteredScreenings = screenings.filter((screening) => {
+    if (screeningFilter === 'ALL') return true;
+    const isUpcoming = new Date(screening.startTime).getTime() >= Date.now();
+    return screeningFilter === 'UPCOMING' ? isUpcoming : !isUpcoming;
+  });
 
   useEffect(() => { refresh(); }, []);
 
@@ -322,7 +388,7 @@ export function AdminScreeningsPage({ onNavigate }: AdminProps) {
       const [nextMovies, nextCinemas, nextScreenings] = await Promise.all([
         apiRequest<MovieResponse[]>('/api/movies'),
         apiRequest<CinemaResponse[]>('/api/cinemas'),
-        apiRequest<ScreeningResponse[]>('/api/screenings'),
+        apiRequest<ScreeningResponse[]>('/api/admin/screenings'),
       ]);
       const hallGroups = await Promise.all(nextCinemas.map((cinema) => apiRequest<HallResponse[]>(`/api/cinemas/${cinema.id}/halls`)));
       setMovies(nextMovies);
@@ -354,15 +420,13 @@ export function AdminScreeningsPage({ onNavigate }: AdminProps) {
     } catch (err) { setError(getErrorMessage(err)); }
   }
 
-  async function deleteScreening(id: number) {
-    const screening = screenings.find((item) => item.id === id);
-    if (!window.confirm(`Are you sure you want to delete ${screening?.movieTitle ?? 'this screening'}?`)) {
-      return;
-    }
-    setBusyScreeningId(id);
+  async function deleteScreening() {
+    if (!pendingDeleteScreening) return;
+    setBusyScreeningId(pendingDeleteScreening.id);
     try {
-      await apiRequest(`/api/admin/screenings/${id}`, { method: 'DELETE' });
+      await apiRequest(`/api/admin/screenings/${pendingDeleteScreening.id}`, { method: 'DELETE' });
       setEditingId('');
+      setPendingDeleteScreening(null);
       await refresh();
     } catch (err) { setError(getErrorMessage(err)); }
     finally { setBusyScreeningId(null); }
@@ -381,10 +445,55 @@ export function AdminScreeningsPage({ onNavigate }: AdminProps) {
           <label>Date<input name="date" type="date" required defaultValue={editing?.startTime.slice(0, 10) ?? ''} /></label>
           <label>Time<input name="time" type="time" required defaultValue={editing?.startTime.slice(11, 16) ?? ''} /></label>
           <label>Ticket price<input name="ticketPrice" type="number" step="0.01" min="1" required defaultValue={editing?.ticketPrice ?? ''} /></label>
-          <div className="actions"><button type="submit">{editing ? 'Update screening' : 'Add screening'}</button>{editing && <button type="button" onClick={() => deleteScreening(editing.id)} disabled={busyScreeningId === editing.id}>Delete screening</button>}</div>
+          <div className="actions"><button type="submit">{editing ? 'Update screening' : 'Add screening'}</button>{editing && <button className="danger-button" type="button" onClick={() => setPendingDeleteScreening(editing)} disabled={busyScreeningId === editing.id}>Delete screening</button>}</div>
         </form>
-        <div className="admin-list">{screenings.map((screening) => <article className="admin-list-item" key={screening.id}><strong>{screening.movieTitle}</strong><span>{formatDateTime(screening.startTime)}</span><span>{screening.cinemaName} | {screening.hallName}</span><span>{screening.ticketPrice} RSD</span></article>)}</div>
+        <section className="admin-list-panel">
+          <div className="segmented-control" aria-label="Screening time filter">
+            {(['UPCOMING', 'PAST', 'ALL'] as ScreeningFilter[]).map((filter) => (
+              <button
+                className={screeningFilter === filter ? 'selected' : ''}
+                key={filter}
+                type="button"
+                onClick={() => setScreeningFilter(filter)}
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
+          <div className="admin-list scroll-list">
+            {filteredScreenings.length === 0 ? <p className="empty-state">No screenings match this filter.</p> : filteredScreenings.map((screening) => {
+              const isPast = new Date(screening.startTime).getTime() < Date.now();
+              return (
+                <article className={`admin-list-item ${isPast ? 'past-item' : ''}`} key={screening.id}>
+                  <strong>{screening.movieTitle}</strong>
+                  <span>Date/time: {formatDateTime(screening.startTime)}</span>
+                  <span>Cinema: {screening.cinemaName}</span>
+                  <span>Hall: {screening.hallName}</span>
+                  <span>Ticket price: {screening.ticketPrice} RSD</span>
+                  <button type="button" onClick={() => setEditingId(String(screening.id))}>Edit</button>
+                </article>
+              );
+            })}
+          </div>
+        </section>
       </div>
+      {pendingDeleteScreening && (
+        <AppModal
+          title="Delete screening?"
+          onClose={() => !busyScreeningId && setPendingDeleteScreening(null)}
+          footer={(
+            <>
+              <button type="button" onClick={() => setPendingDeleteScreening(null)} disabled={busyScreeningId === pendingDeleteScreening.id}>Cancel</button>
+              <button className="danger-button" type="button" onClick={deleteScreening} disabled={busyScreeningId === pendingDeleteScreening.id}>
+                Delete screening
+              </button>
+            </>
+          )}
+        >
+          <p>Are you sure you want to delete "{pendingDeleteScreening.movieTitle}" on {formatDateTime(pendingDeleteScreening.startTime)}?</p>
+          {error && <p className="error-message">{error}</p>}
+        </AppModal>
+      )}
       {error && <p className="error-message">{error}</p>}
     </AdminLayout>
   );

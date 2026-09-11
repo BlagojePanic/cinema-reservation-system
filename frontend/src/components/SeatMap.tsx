@@ -6,6 +6,7 @@ import {
   ScreeningSeatResponse,
   UserResponse,
 } from '../api';
+import { SeatLayout } from './SeatLayout';
 import { formatDateTime, getErrorMessage } from '../utils/format';
 
 type SeatMapProps = {
@@ -79,41 +80,20 @@ export function SeatMap({ screening, currentUser, onReserved }: SeatMapProps) {
     }
   }
 
-  const groupedSeats = seats.reduce<Record<string, ScreeningSeatResponse[]>>((groups, seat) => {
-    groups[seat.rowLabel] = [...(groups[seat.rowLabel] ?? []), seat];
-    return groups;
-  }, {});
   const selectedSeats = seats.filter((seat) => seat.heldByCurrentUser);
   const selectedLabels = selectedSeats.map((seat) => `${seat.rowLabel}${seat.seatNumber}`);
+  const layoutSeats = seats.map((seat) => ({
+    id: seat.screeningSeatId,
+    rowLabel: seat.rowLabel,
+    seatNumber: seat.seatNumber,
+    className: `seat-${seat.status.toLowerCase()}${seat.heldByCurrentUser ? ' seat-owned' : ''}`,
+    onClick: () => toggleSeat(seat),
+  }));
 
   return (
     <div className="seat-flow">
       <section className="seat-stage">
-        <div className="screen-line">SCREEN</div>
-        <div className="seat-map-scroll">
-          {Object.entries(groupedSeats).map(([rowLabel, rowSeats]) => (
-            <div className="seat-row" key={rowLabel}>
-              <strong>{rowLabel}</strong>
-              <div>
-                {rowSeats.map((seat) => (
-                  <button
-                    className={`seat-button seat-${seat.status.toLowerCase()}${seat.heldByCurrentUser ? ' seat-owned' : ''}`}
-                    key={seat.screeningSeatId}
-                    type="button"
-                    onClick={() => toggleSeat(seat)}
-                  >
-                    {seat.seatNumber}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="seat-legend">
-          <span>Available</span>
-          <span>Held</span>
-          <span>Reserved</span>
-        </div>
+        <SeatLayout seats={layoutSeats} />
       </section>
       <aside className="checkout-summary">
         <h3>{screening.movieTitle}</h3>

@@ -104,6 +104,14 @@ public class ScreeningService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<ScreeningResponse> findAllForAdmin() {
+        return screeningRepository.findAll().stream()
+                .sorted(Comparator.comparing(Screening::getStartTime))
+                .map(this::toResponse)
+                .toList();
+    }
+
     @Transactional
     public ScreeningResponse create(ScreeningRequest request) {
         Screening screening = new Screening();

@@ -54,7 +54,6 @@ export function Layout({ children, currentUser, onNavigate, onLogout }: LayoutPr
         <nav className="main-nav">
           <button type="button" onClick={() => onNavigate('/')}>Home</button>
           <button type="button" onClick={() => onNavigate('/movies')}>Movies</button>
-          <button type="button" onClick={() => onNavigate('/repertoire')}>Repertoire</button>
           {currentUser?.role === 'ADMIN' && (
             <button type="button" onClick={() => onNavigate('/admin')}>Admin</button>
           )}
