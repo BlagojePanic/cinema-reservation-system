@@ -75,7 +75,6 @@ export function Layout({ children, currentUser, onNavigate, onLogout }: LayoutPr
                 <div className="user-dropdown">
                   <button type="button" onClick={() => navigateFromMenu('/account')}>My Account</button>
                   <button type="button" onClick={() => navigateFromMenu('/reservations')}>My Reservations</button>
-                  <button type="button" onClick={() => navigateFromMenu('/tickets')}>My Tickets</button>
                   <button type="button" onClick={logoutFromMenu}>Logout</button>
                 </div>
               )}
