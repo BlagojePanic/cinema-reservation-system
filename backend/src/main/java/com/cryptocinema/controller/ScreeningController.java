@@ -61,6 +61,11 @@ public class ScreeningController {
         return screeningService.findByHall(hallId);
     }
 
+    @GetMapping("/api/admin/screenings")
+    public List<ScreeningResponse> findAllForAdmin() {
+        return screeningService.findAllForAdmin();
+    }
+
     @GetMapping("/api/screenings/{screeningId}/seats")
     public List<ScreeningSeatResponse> findSeats(
             @PathVariable Long screeningId,

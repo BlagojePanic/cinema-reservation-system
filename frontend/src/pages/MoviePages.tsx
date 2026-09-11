@@ -43,18 +43,20 @@ export function MoviesPage({ onNavigate }: { onNavigate: (path: string) => void 
 
 export function MovieDetailsPage({
   movieId,
+  initialSearch,
   onNavigate,
 }: {
   movieId: number;
+  initialSearch?: string;
   onNavigate: (path: string) => void;
 }) {
   const [movie, setMovie] = useState<MovieResponse | null>(null);
   const [cities, setCities] = useState<CityResponse[]>([]);
   const [cinemas, setCinemas] = useState<CinemaResponse[]>([]);
   const [screenings, setScreenings] = useState<ScreeningResponse[]>([]);
-  const [cityId, setCityId] = useState('');
-  const [cinemaId, setCinemaId] = useState('');
-  const [date, setDate] = useState('');
+  const [cityId, setCityId] = useState(() => new URLSearchParams(initialSearch).get('cityId') ?? '');
+  const [cinemaId, setCinemaId] = useState(() => new URLSearchParams(initialSearch).get('cinemaId') ?? '');
+  const [date, setDate] = useState(() => new URLSearchParams(initialSearch).get('date') ?? '');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 

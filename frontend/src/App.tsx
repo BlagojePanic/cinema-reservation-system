@@ -19,7 +19,7 @@ type Route =
   | { name: 'login' }
   | { name: 'register' }
   | { name: 'movies' }
-  | { name: 'movieDetails'; id: number }
+  | { name: 'movieDetails'; id: number; search: string }
   | { name: 'repertoire' }
   | { name: 'seats'; id: number }
   | { name: 'account' }
@@ -34,13 +34,13 @@ type Route =
   | { name: 'notFound' };
 
 function App() {
-  const [path, setPath] = useState(() => window.location.pathname);
+  const [path, setPath] = useState(() => `${window.location.pathname}${window.location.search}`);
   const [currentUser, setCurrentUser] = useState<UserResponse | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const route = useMemo(() => parseRoute(path), [path]);
 
   useEffect(() => {
-    const onPopState = () => setPath(window.location.pathname);
+    const onPopState = () => setPath(`${window.location.pathname}${window.location.search}`);
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -108,7 +108,7 @@ function App() {
       case 'movies':
         return <MoviesPage onNavigate={navigate} />;
       case 'movieDetails':
-        return <MovieDetailsPage movieId={route.id} onNavigate={navigate} />;
+        return <MovieDetailsPage movieId={route.id} initialSearch={route.search} onNavigate={navigate} />;
       case 'repertoire':
         return <RepertoirePage onNavigate={navigate} />;
       case 'seats':
@@ -149,25 +149,26 @@ function App() {
 }
 
 function parseRoute(path: string): Route {
-  if (path === '/') return { name: 'home' };
-  if (path === '/login') return { name: 'login' };
-  if (path === '/register') return { name: 'register' };
-  if (path === '/movies') return { name: 'movies' };
-  if (path === '/repertoire') return { name: 'repertoire' };
-  if (path === '/account') return { name: 'account' };
-  if (path === '/reservations') return { name: 'reservations' };
-  if (path === '/tickets') return { name: 'tickets' };
-  if (path === '/admin') return { name: 'admin' };
-  if (path === '/admin/movies') return { name: 'adminMovies' };
-  if (path === '/admin/structure') return { name: 'adminStructure' };
-  if (path === '/admin/screenings') return { name: 'adminScreenings' };
-  if (path === '/admin/reservations') return { name: 'adminReservations' };
-  if (path === '/admin/tickets') return { name: 'adminTickets' };
+  const [pathname, search = ''] = path.split('?');
+  if (pathname === '/') return { name: 'home' };
+  if (pathname === '/login') return { name: 'login' };
+  if (pathname === '/register') return { name: 'register' };
+  if (pathname === '/movies') return { name: 'movies' };
+  if (pathname === '/repertoire') return { name: 'repertoire' };
+  if (pathname === '/account') return { name: 'account' };
+  if (pathname === '/reservations') return { name: 'reservations' };
+  if (pathname === '/tickets') return { name: 'tickets' };
+  if (pathname === '/admin') return { name: 'admin' };
+  if (pathname === '/admin/movies') return { name: 'adminMovies' };
+  if (pathname === '/admin/structure') return { name: 'adminStructure' };
+  if (pathname === '/admin/screenings') return { name: 'adminScreenings' };
+  if (pathname === '/admin/reservations') return { name: 'adminReservations' };
+  if (pathname === '/admin/tickets') return { name: 'adminTickets' };
 
-  const movieMatch = path.match(/^\/movies\/(\d+)$/);
-  if (movieMatch) return { name: 'movieDetails', id: Number(movieMatch[1]) };
+  const movieMatch = pathname.match(/^\/movies\/(\d+)$/);
+  if (movieMatch) return { name: 'movieDetails', id: Number(movieMatch[1]), search };
 
-  const seatsMatch = path.match(/^\/screenings\/(\d+)\/seats$/);
+  const seatsMatch = pathname.match(/^\/screenings\/(\d+)\/seats$/);
   if (seatsMatch) return { name: 'seats', id: Number(seatsMatch[1]) };
 
   return { name: 'notFound' };

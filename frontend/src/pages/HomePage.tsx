@@ -57,6 +57,15 @@ export function HomePage({ onNavigate }: HomePageProps) {
     ));
   });
 
+  function openMovie(movieId: number) {
+    const params = new URLSearchParams();
+    if (cityId) params.set('cityId', cityId);
+    if (cinemaId) params.set('cinemaId', cinemaId);
+    if (date) params.set('date', date);
+    const query = params.toString();
+    onNavigate(`/movies/${movieId}${query ? `?${query}` : ''}`);
+  }
+
   return (
     <main className="page">
       <section className="catalog-header">
@@ -99,7 +108,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
       {!loading && !error && filteredMovies.length > 0 && (
         <div className="movie-grid">
           {filteredMovies.map((movie) => (
-            <MovieCard key={movie.id} movie={movie} onOpen={(id) => onNavigate(`/movies/${id}`)} />
+            <MovieCard key={movie.id} movie={movie} onOpen={openMovie} />
           ))}
         </div>
       )}
